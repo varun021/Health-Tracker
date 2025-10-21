@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/sidebar"
 import MedicalPredictionApp from "./symptom/UserForm"
 import { useNavigationStore } from "@/lib/stores/navigation-store"
+import { Analytics } from "@/components/symptom/Analytics"
 
 const data = {
   user: {
@@ -56,8 +57,9 @@ const data = {
     // },
     {
       title: "Analytics",
-      url: "#",
+      url: "/analytics",
       icon: IconChartBar,
+      component: Analytics,
     },
      {
       title: "Data Library",

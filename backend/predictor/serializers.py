@@ -124,7 +124,7 @@ class UserSubmissionSerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()
     symptoms = SubmissionSymptomOutputSerializer(source='submission_symptoms', many=True)
     predicted_diseases = DiseasePredictionSerializer(many=True)
-    primary_prediction = serializers.CharField(source='primary_prediction.name')
+    primary_prediction = serializers.SerializerMethodField()
     lifestyle = serializers.SerializerMethodField()
     
     class Meta:
@@ -153,6 +153,12 @@ class UserSubmissionSerializer(serializers.ModelSerializer):
             'exercise_frequency': obj.exercise_frequency,
             'stress_level': obj.stress_level
         }
+    
+    def get_primary_prediction(self, obj):
+        """Safely get primary prediction name"""
+        if obj.primary_prediction:
+            return obj.primary_prediction.name
+        return None
 
 
 class PredictionResultSerializer(serializers.Serializer):

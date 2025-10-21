@@ -1,4 +1,4 @@
-"use client";
+// "use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -13,34 +13,6 @@ import {
 } from "@/components/ui/carousel";
 import { HeartPulse } from "lucide-react";
 
-// Mock data for the carousel
-const features = [
-  {
-    title: "Find Doctors",
-    description: "Search and connect with top-rated specialists near you.",
-    imageSrc: "https://placehold.co/600x400/white/black?text=Doctor",
-  },
-  {
-    title: "Explore Hospitals",
-    description: "Discover trusted hospitals and clinics with advanced facilities.",
-    imageSrc: "https://placehold.co/600x400/white/black?text=Hospital",
-  },
-  {
-    title: "Order Medicines",
-    description: "Get your prescriptions delivered to your doorstep quickly.",
-    imageSrc: "https://placehold.co/600x400/white/black?text=Medicine",
-  },
-  {
-    title: "Book Lab Tests",
-    description: "Schedule diagnostic tests from certified labs with ease.",
-    imageSrc: "https://placehold.co/600x400/white/black?text=Lab+Test",
-  },
-  {
-    title: "Health Articles",
-    description: "Read expert-written articles to stay informed and healthy.",
-    imageSrc: "https://placehold.co/600x400/white/black?text=Articles",
-  },
-];
 
 export default function Home() {
   return (
@@ -92,53 +64,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      {/* Features Carousel Section */}
-      {/* <section className="w-full bg-secondary py-20">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="text-center mb-12">
-            <h3 className="text-3xl font-bold tracking-tighter sm:text-4xl">
-              Everything You Need for Better Health
-            </h3>
-            <p className="max-w-xl mx-auto mt-4 text-muted-foreground">
-              From finding the right doctor to getting medicines delivered, we've got you covered.
-            </p>
-          </div>
-          <Carousel
-            opts={{
-              align: "start",
-              loop: true,
-            }}
-            className="w-full max-w-5xl mx-auto"
-          >
-            <CarouselContent>
-              {features.map((feature, index) => (
-                <CarouselItem key={index} className="md:basis-1/2 lg:basis-1/3">
-                  <div className="p-1">
-                    <Card>
-                      <CardContent className="flex flex-col items-center text-center p-6 aspect-square justify-center">
-                        <Image
-                          src={feature.imageSrc}
-                          alt={feature.title}
-                          width={400}
-                          height={267}
-                          className="rounded-md mb-4 object-cover"
-                        />
-                        <h4 className="text-xl font-semibold">{feature.title}</h4>
-                        <p className="text-sm text-muted-foreground mt-2">
-                          {feature.description}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </CarouselItem>
-              ))}
-            </CarouselContent>
-            <CarouselPrevious className="hidden sm:flex" />
-            <CarouselNext className="hidden sm:flex" />
-          </Carousel>
-        </div>
-      </section> */}
 
       {/* Footer */}
       <footer className="border-t py-6 text-center text-sm text-muted-foreground">

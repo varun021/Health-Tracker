@@ -32,7 +32,7 @@ export default function RootLayout({ children }) {
           storageKey="theme"
         >
           {children}
-          <Toaster />
+         <Toaster position="top-center" />
 
         </ThemeProvider>
       </body>

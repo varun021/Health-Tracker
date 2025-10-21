@@ -2,8 +2,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import permissions
-from django.db.models import Count, Q, F, Sum, Avg
-from django.db.models.functions import TruncMonth, ExtractHour, ExtractWeekDay
+from django.db.models import Count, Q, F, Sum, Avg, Max, Min
+from django.db.models.functions import TruncMonth, TruncWeek, TruncDay
 from django.http import HttpResponse
 from datetime import datetime, timedelta
 from .models import Disease, Symptom, DiseaseSymptom, UserSubmission, SubmissionSymptom, DiseasePrediction
@@ -13,21 +13,18 @@ from .serializers import (
     PredictionResultSerializer, ReportSerializer
 )
 from .utils import ReportGenerator
+from .ml_predictor import HybridPredictor
 import json
-
-
-class DiseaseViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Disease.objects.all()
-    serializer_class = DiseaseSerializer
-
-
-class SymptomViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Symptom.objects.all()
-    serializer_class = SymptomSerializer
+from django.utils import timezone
+from django.utils.timezone import make_aware
 
 
 class PredictionViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.predictor = HybridPredictor()
     
     def get_client_info(self, request):
         """Extract client information from request"""
@@ -47,19 +44,15 @@ class PredictionViewSet(viewsets.ViewSet):
         }
 
     def calculate_severity(self, symptom_details):
-        """
-        Calculate severity score based on symptom severity and weights
-        """
+        """Calculate severity score based on symptom severity and weights"""
         if not symptom_details:
             return 0, 'NORMAL'
         
         total_severity = sum(s['severity'] for s in symptom_details)
         avg_severity = total_severity / len(symptom_details)
         
-        # Normalize to 0-100 scale
         severity_score = (avg_severity / 10) * 100
         
-        # Categorize
         if severity_score <= 30:
             category = 'NORMAL'
         elif severity_score <= 70:
@@ -68,71 +61,6 @@ class PredictionViewSet(viewsets.ViewSet):
             category = 'RISKY'
         
         return round(severity_score, 2), category
-    
-    def predict_multiple_diseases(self, symptom_data, user=None):
-        """
-        Predict top 3 diseases based on symptoms with confidence scores
-        """
-        symptom_ids = [s['id'] for s in symptom_data]
-        symptom_severities = {s['id']: s['severity'] for s in symptom_data}
-        
-        # Get all diseases with their symptoms
-        diseases = Disease.objects.prefetch_related('disease_symptoms')
-        disease_scores = []
-        
-        # Get user history for personalization
-        user_history = {}
-        if user and user.is_authenticated:
-            previous_predictions = (DiseasePrediction.objects
-                .filter(submission__user=user, confidence_score__gte=70)
-                .values('disease_id')
-                .annotate(count=Count('id'))
-                .order_by('-count'))
-            user_history = {p['disease_id']: p['count'] for p in previous_predictions}
-
-        for disease in diseases:
-            disease_symptoms = disease.disease_symptoms.filter(symptom_id__in=symptom_ids)
-            
-            if disease_symptoms.exists():
-                # Calculate matching score
-                matched_count = disease_symptoms.count()
-                total_disease_symptoms = disease.disease_symptoms.count()
-                
-                # Base matching percentage
-                match_percentage = (matched_count / total_disease_symptoms) * 100
-                
-                # Weight-based score considering symptom severity
-                weight_score = 0
-                max_possible_weight = 0
-                
-                for ds in disease_symptoms:
-                    symptom_severity = symptom_severities.get(ds.symptom_id, 5)
-                    weight_score += ds.weight * (symptom_severity / 10)
-                    max_possible_weight += ds.weight
-                
-                if max_possible_weight > 0:
-                    weight_percentage = (weight_score / max_possible_weight) * 100
-                else:
-                    weight_percentage = 0
-                
-                # Combined score
-                confidence = (match_percentage * 0.4) + (weight_percentage * 0.6)
-                
-                # Add user history bonus
-                if disease.id in user_history:
-                    history_bonus = min(user_history[disease.id] * 3, 15)
-                    confidence = min(confidence + history_bonus, 100)
-                
-                disease_scores.append({
-                    'disease': disease,
-                    'confidence': round(confidence, 2)
-                })
-        
-        # Sort by confidence and get top 3
-        disease_scores.sort(key=lambda x: x['confidence'], reverse=True)
-        top_predictions = disease_scores[:3]
-        
-        return top_predictions
 
     def format_recommendations(self, text_field):
         """Convert text field with bullet points to list"""
@@ -143,7 +71,6 @@ class PredictionViewSet(viewsets.ViewSet):
         recommendations = []
         
         for line in lines:
-            # Remove bullet points and clean up
             cleaned = line.strip().lstrip('•').lstrip('-').lstrip('*').strip()
             if cleaned:
                 recommendations.append(cleaned)
@@ -152,9 +79,7 @@ class PredictionViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def predict(self, request):
-        """
-        Enhanced prediction endpoint with comprehensive response
-        """
+        """Enhanced prediction using Naive Bayes + Rule-based hybrid approach"""
         serializer = UserSubmissionCreateSerializer(data=request.data)
         
         if not serializer.is_valid():
@@ -162,8 +87,8 @@ class PredictionViewSet(viewsets.ViewSet):
         
         data = serializer.validated_data
         
-        # Get disease predictions
-        predictions = self.predict_multiple_diseases(
+        # Use hybrid predictor
+        predictions = self.predictor.predict(
             data['symptoms'],
             request.user if request.user.is_authenticated else None
         )
@@ -174,16 +99,10 @@ class PredictionViewSet(viewsets.ViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Calculate severity
         severity_score, severity_category = self.calculate_severity(data['symptoms'])
-        
-        # Get client info
         client_info = self.get_client_info(request)
-        
-        # Extract lifestyle data
         lifestyle_data = data.get('lifestyle', {})
         
-        # Create submission
         submission = UserSubmission.objects.create(
             user=request.user if request.user.is_authenticated else None,
             name=data['name'],
@@ -209,7 +128,6 @@ class PredictionViewSet(viewsets.ViewSet):
             **client_info
         )
         
-        # Add symptoms with details
         for symptom_data in data['symptoms']:
             symptom = Symptom.objects.get(id=symptom_data['id'])
             SubmissionSymptom.objects.create(
@@ -220,7 +138,6 @@ class PredictionViewSet(viewsets.ViewSet):
                 onset=symptom_data['onset']
             )
         
-        # Add disease predictions
         for rank, pred in enumerate(predictions, 1):
             DiseasePrediction.objects.create(
                 submission=submission,
@@ -229,12 +146,18 @@ class PredictionViewSet(viewsets.ViewSet):
                 rank=rank
             )
         
-        # Get primary disease for recommendations
         primary_disease = predictions[0]['disease']
         
-        # Prepare response
         result = {
             'submission': UserSubmissionSerializer(submission).data,
+            'predictions': [
+                {
+                    'disease': pred['disease'].name,
+                    'confidence': pred['confidence'],
+                    'rank': idx + 1
+                }
+                for idx, pred in enumerate(predictions)
+            ],
             'recommendations': {
                 'lifestyle_tips': self.format_recommendations(primary_disease.lifestyle_tips),
                 'diet_advice': self.format_recommendations(primary_disease.diet_advice),
@@ -243,14 +166,13 @@ class PredictionViewSet(viewsets.ViewSet):
             'additional_info': {
                 'severity_interpretation': self.get_severity_interpretation(severity_category),
                 'next_steps': self.get_next_steps(severity_category, primary_disease.name),
-                'disclaimer': "This is an AI-assisted health prediction. It should not replace professional medical advice."
+                'disclaimer': "This is an AI-assisted health prediction using Naive Bayes ML algorithm. It should not replace professional medical advice."
             }
         }
         
         return Response(result, status=status.HTTP_201_CREATED)
 
     def get_severity_interpretation(self, category):
-        """Get interpretation based on severity category"""
         interpretations = {
             'NORMAL': 'Mild symptoms detected — continue monitoring and maintain good health practices.',
             'MODERATE': 'Moderate symptoms detected — monitor health and seek care if symptoms worsen.',
@@ -259,7 +181,6 @@ class PredictionViewSet(viewsets.ViewSet):
         return interpretations.get(category, '')
 
     def get_next_steps(self, category, disease_name):
-        """Get next steps based on severity"""
         if category == 'RISKY':
             return f"Seek immediate medical attention. Your symptoms suggest {disease_name} which requires professional evaluation."
         elif category == 'MODERATE':
@@ -267,33 +188,31 @@ class PredictionViewSet(viewsets.ViewSet):
         else:
             return f"Continue monitoring your symptoms. Maintain good hygiene and rest. Consult a doctor if symptoms persist."
 
-    @action(detail=False, methods=['get'])
-    def history(self, request):
-        """Get user submission history"""
-        if not request.user.is_authenticated:
+    @action(detail=False, methods=['post'])
+    def train_model(self, request):
+        """Train/retrain the Naive Bayes model"""
+        if not request.user.is_staff:
             return Response(
-                {'error': 'Authentication required'},
-                status=status.HTTP_401_UNAUTHORIZED
+                {'error': 'Admin access required'},
+                status=status.HTTP_403_FORBIDDEN
             )
-            
-        submissions = (UserSubmission.objects
-            .filter(user=request.user)
-            .select_related('primary_prediction')
-            .prefetch_related('submission_symptoms__symptom', 'predicted_diseases__disease')
-            .order_by('-created_at')[:20])
-            
-        serializer = UserSubmissionSerializer(submissions, many=True)
-        return Response(serializer.data)
+        
+        try:
+            results = self.predictor.nb_predictor.train()
+            return Response({
+                'message': 'Model trained successfully',
+                'details': results
+            })
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=False, methods=['get'])
-    def reports(self, request):
+    def analytics(self, request):
         """
-        NEW: GET endpoint to fetch all user reports with optional filtering
-        Query params:
-        - limit: number of reports (default: 10)
-        - start_date: filter from date (YYYY-MM-DD)
-        - end_date: filter to date (YYYY-MM-DD)
-        - severity: filter by severity (NORMAL, MODERATE, RISKY)
+        Comprehensive analytics dashboard
         """
         if not request.user.is_authenticated:
             return Response(
@@ -301,236 +220,567 @@ class PredictionViewSet(viewsets.ViewSet):
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
-        # Base queryset
-        queryset = (UserSubmission.objects
+        user_submissions = UserSubmission.objects.filter(user=request.user)
+        
+        if not user_submissions.exists():
+            return Response({
+                'message': 'No data available',
+                'overview': self._get_empty_overview(),
+                'trends': {},
+                'insights': {}
+            })
+        
+        # Time range filter
+        days = int(request.query_params.get('days', 30))
+        start_date = datetime.now() - timedelta(days=days)
+        filtered_submissions = user_submissions.filter(created_at__gte=start_date)
+        
+        analytics = {
+            'overview': self._get_overview_stats(user_submissions),
+            'trends': self._get_trend_analysis(filtered_submissions, days),
+            'disease_analytics': self._get_disease_analytics(user_submissions),
+            'symptom_analytics': self._get_symptom_analytics(user_submissions),
+            'lifestyle_correlation': self._get_lifestyle_correlation(user_submissions),
+            'severity_trends': self._get_severity_trends(filtered_submissions),
+            'time_patterns': self._get_time_patterns(user_submissions),
+            'health_score': self._calculate_health_score(user_submissions)
+        }
+        
+        return Response(analytics)
+
+    def _get_empty_overview(self):
+        return {
+            'total_predictions': 0,
+            'avg_severity': 0,
+            'most_common_disease': None,
+            'severity_distribution': {'normal': 0, 'moderate': 0, 'risky': 0}
+        }
+
+    def _get_overview_stats(self, submissions):
+        stats = submissions.aggregate(
+            total=Count('id'),
+            avg_severity=Avg('severity_score'),
+            max_severity=Max('severity_score'),
+            min_severity=Min('severity_score')
+        )
+        
+        most_common = (submissions
+            .values('primary_prediction__name')
+            .annotate(count=Count('id'))
+            .order_by('-count')
+            .first())
+        
+        severity_dist = {
+            'normal': submissions.filter(severity_category='NORMAL').count(),
+            'moderate': submissions.filter(severity_category='MODERATE').count(),
+            'risky': submissions.filter(severity_category='RISKY').count()
+        }
+        
+        return {
+            'total_predictions': stats['total'],
+            'avg_severity': round(stats['avg_severity'], 2) if stats['avg_severity'] else 0,
+            'max_severity': stats['max_severity'] or 0,
+            'min_severity': stats['min_severity'] or 0,
+            'most_common_disease': most_common['primary_prediction__name'] if most_common else None,
+            'severity_distribution': severity_dist
+        }
+
+    def _get_trend_analysis(self, submissions, days):
+        """Analyze trends over time"""
+        if days <= 7:
+            truncate_func = TruncDay
+            date_format = '%Y-%m-%d'
+        elif days <= 90:
+            truncate_func = TruncWeek
+            date_format = '%Y-W%W'
+        else:
+            truncate_func = TruncMonth
+            date_format = '%Y-%m'
+        
+        trends = (submissions
+            .annotate(period=truncate_func('created_at'))
+            .values('period')
+            .annotate(
+                count=Count('id'),
+                avg_severity=Avg('severity_score'),
+                normal=Count('id', filter=Q(severity_category='NORMAL')),
+                moderate=Count('id', filter=Q(severity_category='MODERATE')),
+                risky=Count('id', filter=Q(severity_category='RISKY'))
+            )
+            .order_by('period'))
+        
+        return [{
+            'period': trend['period'].strftime(date_format),
+            'count': trend['count'],
+            'avg_severity': round(trend['avg_severity'], 2),
+            'severity_breakdown': {
+                'normal': trend['normal'],
+                'moderate': trend['moderate'],
+                'risky': trend['risky']
+            }
+        } for trend in trends]
+
+    def _get_disease_analytics(self, submissions):
+        """Detailed disease analytics"""
+        disease_stats = (submissions
+            .values('primary_prediction__name')
+            .annotate(
+                count=Count('id'),
+                avg_severity=Avg('severity_score'),
+                last_occurrence=Max('created_at')
+            )
+            .order_by('-count'))
+        
+        return [{
+            'disease': stat['primary_prediction__name'],
+            'occurrences': stat['count'],
+            'avg_severity': round(stat['avg_severity'], 2),
+            'last_seen': stat['last_occurrence'].strftime('%Y-%m-%d')
+        } for stat in disease_stats]
+
+    def _get_symptom_analytics(self, submissions):
+        """Most common symptoms"""
+        symptom_stats = (SubmissionSymptom.objects
+            .filter(submission__in=submissions)
+            .values('symptom__name')
+            .annotate(
+                count=Count('id'),
+                avg_severity=Avg('severity')
+            )
+            .order_by('-count')[:10])
+        
+        return [{
+            'symptom': stat['symptom__name'],
+            'frequency': stat['count'],
+            'avg_severity': round(stat['avg_severity'], 2)
+        } for stat in symptom_stats]
+
+    def _get_lifestyle_correlation(self, submissions):
+        """Correlate lifestyle factors with health outcomes"""
+        lifestyle_analysis = {
+            'smoking': self._analyze_factor(submissions, 'smoking'),
+            'alcohol': self._analyze_factor(submissions, 'alcohol'),
+            'sleep': self._analyze_sleep(submissions),
+            'stress': self._analyze_stress(submissions)
+        }
+        
+        return lifestyle_analysis
+
+    def _analyze_factor(self, submissions, field):
+        with_factor = submissions.filter(**{field: True})
+        without_factor = submissions.filter(**{field: False})
+        
+        return {
+            'with_factor': {
+                'count': with_factor.count(),
+                'avg_severity': round(with_factor.aggregate(avg=Avg('severity_score'))['avg'] or 0, 2)
+            },
+            'without_factor': {
+                'count': without_factor.count(),
+                'avg_severity': round(without_factor.aggregate(avg=Avg('severity_score'))['avg'] or 0, 2)
+            }
+        }
+
+    def _analyze_sleep(self, submissions):
+        sleep_data = submissions.filter(sleep_hours__isnull=False)
+        
+        return {
+            'avg_sleep_hours': round(sleep_data.aggregate(avg=Avg('sleep_hours'))['avg'] or 0, 2),
+            'correlation_with_severity': self._calculate_correlation(sleep_data, 'sleep_hours', 'severity_score')
+        }
+
+    def _analyze_stress(self, submissions):
+        stress_data = submissions.filter(stress_level__isnull=False)
+        
+        return {
+            'avg_stress_level': round(stress_data.aggregate(avg=Avg('stress_level'))['avg'] or 0, 2),
+            'correlation_with_severity': self._calculate_correlation(stress_data, 'stress_level', 'severity_score')
+        }
+
+    def _calculate_correlation(self, queryset, field1, field2):
+        """Simple correlation calculation"""
+        if not queryset.exists():
+            return 0
+        
+        data = list(queryset.values_list(field1, field2))
+        if len(data) < 2:
+            return 0
+        
+        import numpy as np
+        arr = np.array(data)
+        correlation = np.corrcoef(arr[:, 0], arr[:, 1])[0, 1]
+        return round(correlation, 3) if not np.isnan(correlation) else 0
+
+    def _get_severity_trends(self, submissions):
+        """Track how severity changes over time"""
+        return list(submissions
+            .order_by('created_at')
+            .values('created_at', 'severity_score', 'severity_category')[:50])
+
+    def _get_time_patterns(self, submissions):
+        """Analyze patterns by time of day/week"""
+        from django.db.models.functions import ExtractHour, ExtractWeekDay
+        
+        hour_pattern = (submissions
+            .annotate(hour=ExtractHour('created_at'))
+            .values('hour')
+            .annotate(count=Count('id'))
+            .order_by('hour'))
+        
+        weekday_pattern = (submissions
+            .annotate(weekday=ExtractWeekDay('created_at'))
+            .values('weekday')
+            .annotate(count=Count('id'))
+            .order_by('weekday'))
+        
+        return {
+            'by_hour': list(hour_pattern),
+            'by_weekday': list(weekday_pattern)
+        }
+
+    def _calculate_health_score(self, submissions):
+        """Calculate overall health score (0-100)"""
+        if not submissions.exists():
+            return 0
+        
+        # Evaluate the queryset immediately to avoid filtering after slicing
+        recent = list(submissions.order_by('-created_at')[:10])
+        
+        # Calculate average severity from the list
+        avg_severity = sum(sub.severity_score for sub in recent) / len(recent)
+        
+        # Count risky cases from the list
+        risky_count = sum(1 for sub in recent if sub.severity_category == 'RISKY')
+        
+        # Invert severity to health score (lower severity = higher health)
+        health_score = 100 - avg_severity
+        
+        # Adjust based on frequency of risky cases
+        health_score -= (risky_count * 5)
+        
+        return max(0, min(100, round(health_score, 2)))
+
+    @action(detail=False, methods=['get'])
+    def export_data(self, request):
+        """Export user data in various formats"""
+        if not request.user.is_authenticated:
+            return Response(
+                {'error': 'Authentication required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        format_type = request.query_params.get('format', 'json')
+        
+        submissions = (UserSubmission.objects
             .filter(user=request.user)
             .select_related('primary_prediction')
             .prefetch_related('submission_symptoms__symptom', 'predicted_diseases__disease'))
         
-        # Apply filters
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        severity = request.query_params.get('severity')
-        limit = request.query_params.get('limit', 10)
+        if format_type == 'csv':
+            return self._export_csv(submissions)
+        elif format_type == 'json':
+            serializer = UserSubmissionSerializer(submissions, many=True)
+            return Response(serializer.data)
+        else:
+            return Response({'error': 'Invalid format'}, status=status.HTTP_400_BAD_REQUEST)
+
+    def _export_csv(self, submissions):
+        import csv
+        from io import StringIO
         
-        try:
-            limit = int(limit)
-        except ValueError:
-            limit = 10
+        output = StringIO()
+        writer = csv.writer(output)
         
-        if start_date:
-            try:
-                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-                queryset = queryset.filter(created_at__date__gte=start_date)
-            except ValueError:
-                return Response(
-                    {'error': 'Invalid start_date format. Use YYYY-MM-DD'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        writer.writerow(['Date', 'Disease', 'Confidence', 'Severity Score', 'Category', 'Symptoms'])
         
-        if end_date:
-            try:
-                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-                queryset = queryset.filter(created_at__date__lte=end_date)
-            except ValueError:
-                return Response(
-                    {'error': 'Invalid end_date format. Use YYYY-MM-DD'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        for sub in submissions:
+            symptoms = ', '.join([ss.symptom.name for ss in sub.submission_symptoms.all()])
+            pred = sub.predicted_diseases.first()
+            
+            writer.writerow([
+                sub.created_at.strftime('%Y-%m-%d'),
+                sub.primary_prediction.name if sub.primary_prediction else '',
+                pred.confidence_score if pred else '',
+                sub.severity_score,
+                sub.severity_category,
+                symptoms
+            ])
         
-        if severity and severity in ['NORMAL', 'MODERATE', 'RISKY']:
-            queryset = queryset.filter(severity_category=severity)
-        
-        # Order and limit
-        submissions = queryset.order_by('-created_at')[:limit]
-        
-        # Serialize
-        serializer = UserSubmissionSerializer(submissions, many=True)
-        
-        # Add metadata
-        response_data = {
-            'count': submissions.count(),
-            'total_count': UserSubmission.objects.filter(user=request.user).count(),
-            'filters_applied': {
-                'start_date': start_date.strftime('%Y-%m-%d') if start_date else None,
-                'end_date': end_date.strftime('%Y-%m-%d') if end_date else None,
-                'severity': severity,
-                'limit': limit
-            },
-            'reports': serializer.data
-        }
-        
-        return Response(response_data)
+        response = HttpResponse(output.getvalue(), content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename=health_data.csv'
+        return response
 
     @action(detail=False, methods=['get'])
-    def statistics(self, request):
-        """Get comprehensive user statistics with proper formatting"""
+    def history(self, request):
+        """Get user submission history with pagination"""
         if not request.user.is_authenticated:
             return Response(
                 {'error': 'Authentication required'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
-        print(f"User ID: {request.user.id}")  # Debug print
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 20))
         
-        user_submissions = UserSubmission.objects.filter(user=request.user)
-        print(f"Total submissions found: {user_submissions.count()}")  # Debug print
-        
-        if not user_submissions.exists():
-            print("No submissions found for user")  # Debug print
-            return Response({
-                'message': 'No submissions found',
-                'overall': {
-                    'total_predictions': 0,
-                    'avg_severity': 0,
-                    'normal_cases': 0,
-                    'moderate_cases': 0,
-                    'risky_cases': 0
-                },
-                'diseases': [],
-                'monthly_trends': [],
-                'severity_distribution': {
-                    'normal': 0,
-                    'moderate': 0,
-                    'risky': 0
-                },
-                'recent_activity': []
-            })
-        
-        # Overall statistics
-        overall_stats = user_submissions.aggregate(
-            total_predictions=Count('id'),
-            avg_severity=Avg('severity_score'),
-            normal_cases=Count('id', filter=Q(severity_category='NORMAL')),
-            moderate_cases=Count('id', filter=Q(severity_category='MODERATE')),
-            risky_cases=Count('id', filter=Q(severity_category='RISKY'))
-        )
-        
-        # Format average severity
-        if overall_stats['avg_severity']:
-            overall_stats['avg_severity'] = round(overall_stats['avg_severity'], 2)
-        else:
-            overall_stats['avg_severity'] = 0
-        
-        # Disease statistics
-        disease_stats = (user_submissions
-            .values('primary_prediction__name')
-            .annotate(
-                count=Count('id'), 
-                avg_severity=Avg('severity_score')
-            )
-            .order_by('-count')[:5])
-        
-        # Format disease stats
-        formatted_disease_stats = []
-        for stat in disease_stats:
-            formatted_disease_stats.append({
-                'disease_name': stat['primary_prediction__name'],
-                'count': stat['count'],
-                'avg_severity': round(stat['avg_severity'], 2) if stat['avg_severity'] else 0,
-                'percentage': round((stat['count'] / overall_stats['total_predictions']) * 100, 1)
-            })
-        
-        # Monthly trends (last 6 months)
-        six_months_ago = datetime.now() - timedelta(days=180)
-        monthly_stats = (user_submissions
-            .filter(created_at__gte=six_months_ago)
-            .annotate(month=TruncMonth('created_at'))
-            .values('month')
-            .annotate(
-                count=Count('id'), 
-                avg_severity=Avg('severity_score')
-            )
-            .order_by('month'))
-        
-        # Format monthly stats
-        formatted_monthly_stats = []
-        for stat in monthly_stats:
-            formatted_monthly_stats.append({
-                'month': stat['month'].strftime('%Y-%m'),
-                'month_name': stat['month'].strftime('%B %Y'),
-                'count': stat['count'],
-                'avg_severity': round(stat['avg_severity'], 2) if stat['avg_severity'] else 0
-            })
-        
-        # Recent activity (last 5 submissions)
-        recent_submissions = (user_submissions
+        submissions = (UserSubmission.objects
+            .filter(user=request.user)
             .select_related('primary_prediction')
-            .order_by('-created_at')[:5])
+            .prefetch_related('submission_symptoms__symptom', 'predicted_diseases__disease')
+            .order_by('-created_at'))
         
-        recent_activity = []
-        for sub in recent_submissions:
-            recent_activity.append({
-                'id': sub.id,
-                'date': sub.created_at.strftime('%Y-%m-%d'),
-                'time': sub.created_at.strftime('%H:%M'),
-                'disease': sub.primary_prediction.name if sub.primary_prediction else 'Unknown',
-                'severity_category': sub.severity_category,
-                'severity_score': sub.severity_score
-            })
+        # Pagination
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated = submissions[start:end]
         
-        # Compile response
-        statistics = {
-            'overall': overall_stats,
-            'diseases': formatted_disease_stats,
-            'monthly_trends': formatted_monthly_stats,
-            'severity_distribution': {
-                'normal': {
-                    'count': overall_stats['normal_cases'],
-                    'percentage': round((overall_stats['normal_cases'] / overall_stats['total_predictions']) * 100, 1)
-                },
-                'moderate': {
-                    'count': overall_stats['moderate_cases'],
-                    'percentage': round((overall_stats['moderate_cases'] / overall_stats['total_predictions']) * 100, 1)
-                },
-                'risky': {
-                    'count': overall_stats['risky_cases'],
-                    'percentage': round((overall_stats['risky_cases'] / overall_stats['total_predictions']) * 100, 1)
-                }
+        serializer = UserSubmissionSerializer(paginated, many=True)
+        
+        return Response({
+            'count': submissions.count(),
+            'page': page,
+            'page_size': page_size,
+            'total_pages': (submissions.count() + page_size - 1) // page_size,
+            'results': serializer.data
+        })
+
+    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'])
+    def comparison_report(self, request):
+        """Compare health metrics across different time periods"""
+        if not request.user.is_authenticated:
+            return Response(
+                {'error': 'Authentication required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Get current period (last 30 days) with timezone awareness
+        current_end = timezone.now()
+        current_start = current_end - timedelta(days=30)
+        
+        # Get previous period (30-60 days ago)
+        previous_end = current_start
+        previous_start = previous_end - timedelta(days=30)
+        
+        current_data = self._get_period_stats(request.user, current_start, current_end)
+        previous_data = self._get_period_stats(request.user, previous_start, previous_end)
+        
+        # Calculate changes
+        comparison = {
+            'current_period': {
+                'start': current_start.strftime('%Y-%m-%d'),
+                'end': current_end.strftime('%Y-%m-%d'),
+                'stats': current_data
             },
-            'recent_activity': recent_activity
+            'previous_period': {
+                'start': previous_start.strftime('%Y-%m-%d'),
+                'end': previous_end.strftime('%Y-%m-%d'),
+                'stats': previous_data
+            },
+            'changes': self._calculate_changes(current_data, previous_data)
         }
         
-        return Response(statistics)
+        return Response(comparison)
+
+    def _get_period_stats(self, user, start_date, end_date):
+        submissions = UserSubmission.objects.filter(
+            user=user,
+            created_at__gte=start_date,
+            created_at__lte=end_date
+        )
+        
+        if not submissions.exists():
+            return {
+                'total_predictions': 0,
+                'avg_severity': 0,
+                'risky_cases': 0,
+                'most_common_disease': None
+            }
+        
+        stats = submissions.aggregate(
+            total=Count('id'),
+            avg_severity=Avg('severity_score'),
+            risky=Count('id', filter=Q(severity_category='RISKY'))
+        )
+        
+        most_common = (submissions
+            .values('primary_prediction__name')
+            .annotate(count=Count('id'))
+            .order_by('-count')
+            .first())
+        
+        return {
+            'total_predictions': stats['total'],
+            'avg_severity': round(stats['avg_severity'], 2) if stats['avg_severity'] else 0,
+            'risky_cases': stats['risky'],
+            'most_common_disease': most_common['primary_prediction__name'] if most_common else None
+        }
+
+    def _calculate_changes(self, current, previous):
+        """Calculate percentage changes between periods"""
+        changes = {}
+        
+        for key in ['total_predictions', 'avg_severity', 'risky_cases']:
+            current_val = current[key]
+            previous_val = previous[key]
+            
+            if previous_val == 0:
+                change = 100 if current_val > 0 else 0
+            else:
+                change = ((current_val - previous_val) / previous_val) * 100
+            
+            changes[key] = {
+                'value': round(change, 2),
+                'direction': 'up' if change > 0 else 'down' if change < 0 else 'stable',
+                'is_improvement': self._is_improvement(key, change)
+            }
+        
+        return changes
+
+    def _is_improvement(self, metric, change):
+        """Determine if change is positive for health"""
+        # For avg_severity and risky_cases, decrease is good
+        if metric in ['avg_severity', 'risky_cases']:
+            return change < 0
+        # For total_predictions, stable or slight decrease might be good
+        return abs(change) < 10
+
+    @action(detail=False, methods=['get'])
+    def recommendations_based_on_history(self, request):
+        """
+        Generate personalized recommendations based on user history
+        """
+        if not request.user.is_authenticated:
+            return Response(
+                {'error': 'Authentication required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Get all submissions first
+        submissions = UserSubmission.objects.filter(user=request.user).order_by('-created_at')
+        
+        if not submissions.exists():
+            return Response({
+                'message': 'No history available for recommendations',
+                'recommendations': []
+            })
+        
+        # Get the last 20 submissions for analysis - evaluate immediately to avoid multiple slicing
+        recent_submissions = list(submissions[:20])
+        
+        recommendations = []
+        
+        # Analyze patterns
+        avg_severity = sum(s.severity_score for s in recent_submissions) / len(recent_submissions)
+        risky_count = sum(1 for s in recent_submissions if s.severity_category == 'RISKY')
+        
+        # Severity-based recommendations
+        if avg_severity > 70:
+            recommendations.append({
+                'category': 'urgent',
+                'title': 'High Average Severity Detected',
+                'message': 'Your recent predictions show high severity. Please consult a healthcare provider.',
+                'action': 'Schedule a medical checkup'
+            })
+        elif avg_severity > 50:
+            recommendations.append({
+                'category': 'warning',
+                'title': 'Moderate Health Concerns',
+                'message': 'Monitor your symptoms closely and maintain healthy habits.',
+                'action': 'Track symptoms daily'
+            })
+        
+        # Risky cases
+        if risky_count >= 3:
+            recommendations.append({
+                'category': 'urgent',
+                'title': 'Multiple Risky Cases',
+                'message': f'You have {risky_count} risky predictions. Immediate medical attention recommended.',
+                'action': 'Consult a doctor immediately'
+            })
+        
+        # Lifestyle recommendations
+        smokers = submissions.filter(smoking=True).count()
+        if smokers > submissions.count() * 0.7:
+            recommendations.append({
+                'category': 'lifestyle',
+                'title': 'Smoking Cessation',
+                'message': 'Smoking is detected in most of your records. Consider quitting for better health.',
+                'action': 'Seek smoking cessation support'
+            })
+        
+        # Sleep analysis
+        low_sleep = submissions.filter(sleep_hours__lt=6).count()
+        if low_sleep > 5:
+            recommendations.append({
+                'category': 'lifestyle',
+                'title': 'Insufficient Sleep',
+                'message': 'You frequently report less than 6 hours of sleep. Better sleep can improve health.',
+                'action': 'Aim for 7-9 hours of sleep'
+            })
+        
+        # Stress analysis
+        high_stress = submissions.filter(stress_level__gte=8).count()
+        if high_stress > 5:
+            recommendations.append({
+                'category': 'lifestyle',
+                'title': 'High Stress Levels',
+                'message': 'High stress is frequently reported. Consider stress management techniques.',
+                'action': 'Practice relaxation techniques'
+            })
+        
+        # Disease pattern
+        disease_counts = (submissions
+            .values('primary_prediction__name')
+            .annotate(count=Count('id'))
+            .order_by('-count'))
+        
+        if disease_counts and disease_counts[0]['count'] >= 5:
+            recommendations.append({
+                'category': 'medical',
+                'title': 'Recurring Condition',
+                'message': f'{disease_counts[0]["primary_prediction__name"]} appears frequently in your history.',
+                'action': 'Discuss with your doctor about prevention strategies'
+            })
+        
+        # Calculate health score using the already evaluated recent_submissions
+        health_score = 100 - avg_severity  # Base score
+        health_score -= (risky_count * 5)  # Penalty for risky cases
+        health_score = max(0, min(100, round(health_score, 2)))  # Ensure range 0-100
+        
+        return Response({
+            'total_recommendations': len(recommendations),
+            'health_score': health_score,
+            'recommendations': recommendations
+        })
 
     @action(detail=False, methods=['post', 'get'])
     def generate_report(self, request):
-        """Generate user report in specified format"""
+        """Generate comprehensive user report in specified format"""
         if not request.user.is_authenticated:
             return Response(
                 {'error': 'Authentication required'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        print(f"User ID: {request.user.id}")  # Debug print
-        
-        # Handle both POST and GET requests
         if request.method == 'POST':
             data = request.data
         else:
             data = request.query_params.dict()
 
-        print(f"Request data: {data}")  # Debug print
-
         serializer = ReportSerializer(data=data)
         if not serializer.is_valid():
-            print(f"Serializer errors: {serializer.errors}")  # Debug print
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         validated_data = serializer.validated_data
         
-        # Set date range with defaults
         start_date = validated_data.get('start_date')
         end_date = validated_data.get('end_date')
         
         if not start_date:
-            start_date = (datetime.now() - timedelta(days=30)).date()
+            start_date = timezone.now() - timedelta(days=30)
         if not end_date:
-            end_date = datetime.now().date()
+            end_date = timezone.now()
 
-        print(f"Date range: {start_date} to {end_date}")  # Debug print
-
-        # Fetch submissions
         submissions = (UserSubmission.objects
             .filter(
                 user=request.user, 
@@ -541,10 +791,7 @@ class PredictionViewSet(viewsets.ViewSet):
             .prefetch_related('submission_symptoms__symptom', 'predicted_diseases__disease')
             .order_by('-created_at'))
 
-        print(f"Found {submissions.count()} submissions")  # Debug print
-
         if not submissions.exists():
-            # Return an empty report payload (200) so clients can handle "no data" gracefully
             return Response({
                 'report_metadata': {
                     'generated_at': datetime.now().isoformat(),
@@ -552,15 +799,12 @@ class PredictionViewSet(viewsets.ViewSet):
                     'date_range': {
                         'start': start_date.strftime('%Y-%m-%d'),
                         'end': end_date.strftime('%Y-%m-%d')
-                    },
-                    'include_personal_info': validated_data.get('include_personal_info', True),
-                    'include_recommendations': validated_data.get('include_recommendations', True)
+                    }
                 },
                 'predictions': []
             }, status=status.HTTP_200_OK)
 
         try:
-            # Generate report
             generator = ReportGenerator(
                 submissions,
                 include_personal=validated_data.get('include_personal_info', True),
@@ -568,7 +812,6 @@ class PredictionViewSet(viewsets.ViewSet):
             )
 
             format_type = validated_data.get('format', 'pdf')
-            print(f"Generating report in {format_type} format")  # Debug print
             
             if format_type == 'pdf':
                 pdf = generator.generate_pdf()
@@ -590,8 +833,17 @@ class PredictionViewSet(viewsets.ViewSet):
                 return Response(json_data, status=status.HTTP_200_OK)
                 
         except Exception as e:
-            print(f"Error generating report: {str(e)}")  # Debug print
             return Response(
                 {'error': f'Error generating report: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class DiseaseViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Disease.objects.all()
+    serializer_class = DiseaseSerializer
+
+
+class SymptomViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Symptom.objects.all()
+    serializer_class = SymptomSerializer

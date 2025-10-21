@@ -1,5 +1,6 @@
 "use client"
 
+import { userApi } from "@/lib/api-services"
 import {
   IconCreditCard,
   IconDotsVertical,
@@ -7,6 +8,7 @@ import {
   IconNotification,
   IconUserCircle,
 } from "@tabler/icons-react"
+import { useState } from "react"
 
 import {
   Avatar,
@@ -33,6 +35,19 @@ export function NavUser({
   user
 }) {
   const { isMobile } = useSidebar()
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true)
+      await userApi.logout()
+      // Redirect to login page or refresh
+      window.location.href = '/login'
+    } catch (error) {
+      console.error('Logout failed:', error)
+      setIsLoggingOut(false)
+    }
+  }
 
   return (
     <SidebarMenu>
@@ -90,7 +105,7 @@ export function NavUser({
               </DropdownMenuItem> */}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={handleLogout}>
               <IconLogout />
               Log out
             </DropdownMenuItem>
