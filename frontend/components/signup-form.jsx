@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input"
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { userApi } from "@/lib/api-services"
-import useAuthStore from "@/stores/useAuthStore"
 import { toast } from "sonner"
 import Image from "next/image"
 
@@ -22,7 +21,6 @@ export function SignupForm({ className, ...props }) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const setUser = useAuthStore((s) => s.setUser);
   const router = useRouter();
 
   const handleSubmit = useCallback(async (e) => {
@@ -48,17 +46,15 @@ export function SignupForm({ className, ...props }) {
     
     try {
       await userApi.register({ email, username, password });
-      const profile = await userApi.getProfile();
-      setUser(profile);
-      toast.success("Account created successfully! Redirecting...");
-      router.push("/");
+      toast.success("Account created successfully! Please sign in.");
+      router.push("/login");
     } catch (err) {
       const errorMsg = err?.response?.data?.detail ?? err?.message ?? "Registration failed";
       toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
-  }, [email, username, password, confirmPassword, setUser, router]);
+  }, [email, username, password, confirmPassword, router]);
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
