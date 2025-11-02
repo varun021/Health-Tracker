@@ -13,6 +13,7 @@ import {
 
 export function SectionCards() {
   const [analytics, setAnalytics] = useState(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -21,12 +22,37 @@ export function SectionCards() {
         setAnalytics(data)
       } catch (error) {
         console.error("Failed to fetch analytics:", error)
+      } finally {
+        setLoading(false)
       }
     }
     fetchAnalytics()
   }, [])
 
-  if (!analytics) return null
+  if (loading) {
+    return (
+      <div className="grid place-items-center p-8">
+        <div className="animate-pulse text-muted-foreground">Loading analytics...</div>
+      </div>
+    )
+  }
+
+  // Show empty state if no data
+  if (!analytics || !analytics.overview) {
+    return (
+      <div className="grid place-items-center p-8">
+        <div className="text-center text-muted-foreground">
+          <p className="text-lg font-medium">No data available</p>
+          <p className="text-sm">Start using the symptom checker to see your health analytics</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Add null checks and default values
+  const healthScore = analytics?.health_score ?? 0;
+  const overview = analytics?.overview ?? {};
+  const severityDistribution = overview?.severity_distribution ?? {};
 
   return (
     <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
@@ -34,12 +60,12 @@ export function SectionCards() {
         <CardHeader>
           <CardDescription>Health Score</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {analytics.health_score.toFixed(1)}
+            {healthScore.toFixed(1)}
           </CardTitle>
           <CardAction>
-            <Badge variant={analytics.health_score > 50 ? "outline" : "destructive"}>
+            <Badge variant={healthScore > 50 ? "outline" : "destructive"}>
               <IconHeartbeat className="size-4" />
-              {analytics.health_score > 50 ? "Good" : "Needs Attention"}
+              {healthScore > 50 ? "Good" : "Needs Attention"}
             </Badge>
           </CardAction>
         </CardHeader>
@@ -57,7 +83,7 @@ export function SectionCards() {
         <CardHeader>
           <CardDescription>Total Predictions</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {analytics.overview.total_predictions}
+            {overview.total_predictions}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
@@ -71,7 +97,7 @@ export function SectionCards() {
             Total assessments made
           </div>
           <div className="text-muted-foreground">
-            Most common: {analytics.overview.most_common_disease}
+            Most common: {overview.most_common_disease}
           </div>
         </CardFooter>
       </Card>
@@ -80,7 +106,7 @@ export function SectionCards() {
         <CardHeader>
           <CardDescription>Risk Level</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {analytics.overview.severity_distribution.risky || 0}
+            {severityDistribution.risky || 0}
           </CardTitle>
           <CardAction>
             <Badge variant="destructive">
@@ -94,7 +120,7 @@ export function SectionCards() {
             Cases requiring attention
           </div>
           <div className="text-muted-foreground">
-            Average severity: {analytics.overview.avg_severity.toFixed(1)}%
+            Average severity: {overview.avg_severity.toFixed(1)}%
           </div>
         </CardFooter>
       </Card>
@@ -103,12 +129,12 @@ export function SectionCards() {
         <CardHeader>
           <CardDescription>Moderate Cases</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {analytics.overview.severity_distribution.moderate || 0}
+            {severityDistribution.moderate || 0}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
               <IconPercentage className="size-4" />
-              {((analytics.overview.severity_distribution.moderate || 0) / analytics.overview.total_predictions * 100).toFixed(1)}%
+              {((severityDistribution.moderate || 0) / overview.total_predictions * 100).toFixed(1)}%
             </Badge>
           </CardAction>
         </CardHeader>
