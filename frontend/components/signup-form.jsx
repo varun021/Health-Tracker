@@ -49,7 +49,15 @@ export function SignupForm({ className, ...props }) {
       toast.success("Account created successfully! Please sign in.");
       router.push("/login");
     } catch (err) {
-      const errorMsg = err?.response?.data?.detail ?? err?.message ?? "Registration failed";
+      // Prefer backend-provided `error`, then `detail`, then message
+      const respData = err?.response?.data;
+      const errorMsg =
+        respData?.error ??
+        respData?.detail ??
+        // Some APIs return validation objects or arrays; stringify reasonably
+        (typeof respData === "object" ? JSON.stringify(respData) : null) ??
+        err?.message ??
+        "Registration failed";
       toast.error(errorMsg);
     } finally {
       setLoading(false);
