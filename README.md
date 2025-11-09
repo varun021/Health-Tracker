@@ -1,4 +1,4 @@
-# Roji - AI-Powered Disease Prediction System
+# Health-Tracker - AI/ML-Powered Disease Prediction System
 
 > An intelligent health prediction platform combining Machine Learning (Naive Bayes) with rule-based symptom matching to provide accurate disease predictions and personalized health recommendations.
 
@@ -16,7 +16,7 @@
 
 ## 🎯 Overview
 
-Roji is a full-stack health prediction application that helps users understand potential health conditions based on their symptoms. It uses a **hybrid prediction system** combining:
+Health-Tracker is a full-stack health prediction application that helps users understand potential health conditions based on their symptoms. It uses a **hybrid prediction system** combining:
 
 - **Naive Bayes Machine Learning (60% weight)**: Data-driven probability-based predictions
 - **Rule-based Matching (40% weight)**: Domain knowledge and symptom weighted scoring
@@ -71,7 +71,7 @@ The system analyzes comprehensive health data including:
 ## 📁 Project Structure
 
 ```
-roji-project/
+Health-Tracker-project/
 ├── backend/                    # Django backend
 │   ├── core/                   # Project settings & configuration
 │   │   ├── settings.py         # Django settings
