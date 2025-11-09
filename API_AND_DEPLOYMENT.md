@@ -1,4 +1,4 @@
-# API Reference & Deployment Guide - Roji
+# API Reference & Deployment Guide - Health-Tracker
 
 ## Table of Contents
 1. [API Authentication](#api-authentication)
