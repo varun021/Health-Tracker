@@ -31,7 +31,7 @@ class DiseaseSerializer(serializers.ModelSerializer):
 class SubmissionSymptomInputSerializer(serializers.Serializer):
     """Serializer for symptom input with details"""
     id = serializers.IntegerField()
-    severity = serializers.IntegerField(min_value=1, max_value=10)
+    severity = serializers.IntegerField(min_value=1, max_value=10, required=False, allow_null=True)
     duration = serializers.CharField(max_length=50)
     onset = serializers.ChoiceField(choices=['SUDDEN', 'GRADUAL'])
 
@@ -44,6 +44,8 @@ class LifestyleSerializer(serializers.Serializer):
     sleep_hours = serializers.IntegerField(min_value=0, max_value=24, required=False)
     exercise_frequency = serializers.CharField(max_length=50, required=False)
     stress_level = serializers.IntegerField(min_value=1, max_value=10, required=False)
+
+
 
 
 class UserSubmissionCreateSerializer(serializers.Serializer):
@@ -74,7 +76,7 @@ class UserSubmissionCreateSerializer(serializers.Serializer):
     
     # Travel
     travel_history = serializers.CharField(required=False, allow_blank=True)
-    
+
     def validate_symptoms(self, value):
         if not value:
             raise serializers.ValidationError("At least one symptom must be provided.")
@@ -84,9 +86,20 @@ class UserSubmissionCreateSerializer(serializers.Serializer):
         existing_ids = Symptom.objects.filter(id__in=symptom_ids).values_list('id', flat=True)
         
         if len(existing_ids) != len(symptom_ids):
-            raise serializers.ValidationError("One or more invalid symptom IDs.")
-        
+            raise serializers.ValidationError("One or more invalid symptom IDs provided.")
+
+        # Auto-fill severity from dataset if missing
+        from .models import DiseaseSymptom
+        for s in value:
+            if 'severity' not in s or s['severity'] is None:
+                symptom_obj = Symptom.objects.filter(id=s['id']).first()
+                if symptom_obj:
+                    ds = DiseaseSymptom.objects.filter(symptom=symptom_obj).order_by('-weight').first()
+                    s['severity'] = ds.weight if ds else 5
+                else:
+                    s['severity'] = 5
         return value
+
 
 
 class SubmissionSymptomOutputSerializer(serializers.ModelSerializer):

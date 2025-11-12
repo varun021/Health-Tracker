@@ -97,23 +97,41 @@ class RegisterView(APIView):
             )
 
 
+from rest_framework import status, permissions
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import authenticate
+from django.conf import settings
+from users.models import User
+import logging
+
+logger = logging.getLogger(__name__)
+
 class LoginView(APIView):
     """
-    User login endpoint that sets JWT tokens in HTTP-only cookies.
+    Secure user login endpoint that issues JWT tokens in HttpOnly cookies.
+    Handles expired tokens automatically and allows login via username or email.
     """
     permission_classes = [permissions.AllowAny]
-    
+
     def post(self, request):
+        # 🧹 Step 1 — Always clear old cookies to prevent expired-token issues
+        response = Response()
+        response.delete_cookie('access_token')
+        response.delete_cookie('refresh_token')
+
+        # Step 2 — Get and validate input
         username = request.data.get('username', '').strip()
         password = request.data.get('password', '')
-        
+
         if not username or not password:
             return Response(
                 {'error': 'Username and password are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Allow login with email or username
+
+        # Step 3 — Allow login with email or username
         if '@' in username:
             try:
                 user_obj = User.objects.get(email__iexact=username)
@@ -123,65 +141,53 @@ class LoginView(APIView):
                     {'error': 'Invalid credentials'},
                     status=status.HTTP_401_UNAUTHORIZED
                 )
-        
+
+        # Step 4 — Authenticate user
         user = authenticate(request, username=username, password=password)
-        
         if not user:
             logger.warning(f"Failed login attempt for username: {username}")
             return Response(
                 {'error': 'Invalid credentials'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-        
+
         if not user.is_active:
             return Response(
                 {'error': 'Account is disabled'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
-        # Generate tokens
+
+        # Step 5 — Generate JWT tokens
         refresh = RefreshToken.for_user(user)
         access_token = refresh.access_token
-        
-        # Prepare response
-        response = Response(
-            {
-                'message': 'Login successful',
-                'user': {
-                    'id': user.id,
-                    'username': user.username,
-                    'email': user.email,
-                    'is_verified': getattr(user, 'is_verified', False)
-                }
-            },
-            status=status.HTTP_200_OK
-        )
-        
-        # Set cookies with proper security settings (use settings.DEBUG in dev)
-        secure_flag = not getattr(settings, "DEBUG", False)  # True in production
-        # If you are doing cross-site cookies (frontend on different origin),
-        # you typically need samesite='None' and secure=True (requires HTTPS).
+
+        # Step 6 — Prepare cookie settings (different for dev vs prod)
+        secure_flag = not getattr(settings, "DEBUG", False)  # True only in production (HTTPS)
         cookie_settings = {
             'httponly': True,
-            'secure': secure_flag,  # False in DEBUG (http), True in production (https)
-            'samesite': 'Lax' if settings.DEBUG else 'None',
-            'max_age': None,
+            'secure': secure_flag,
+            'samesite': 'Lax' if settings.DEBUG else 'None',  # 'None' for cross-site cookies
+            'max_age': 7 * 24 * 60 * 60,  # 7 days
         }
 
-        response.set_cookie(
-            key='refresh_token',
-            value=str(refresh),
-            **cookie_settings
-        )
+        # Step 7 — Set new cookies
+        response.set_cookie('refresh_token', str(refresh), **cookie_settings)
+        response.set_cookie('access_token', str(access_token), **cookie_settings)
 
-        response.set_cookie(
-            key='access_token',
-            value=str(access_token),
-            **cookie_settings
-        )
-        
+        # Step 8 — Response payload
+        response.data = {
+            'message': 'Login successful',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'is_verified': getattr(user, 'is_verified', False)
+            }
+        }
+
         logger.info(f"User logged in: {username}")
         return response
+
 
 
 class LogoutView(APIView):

@@ -131,24 +131,51 @@ export const userApi = {
   },
 
   generateReport: async (options) => {
-    const { start_date, end_date, format = 'pdf', include_personal_info = true, include_recommendations = true } = options;
-    const response = await api.post('/api/predictions/generate_report/', {
+    const {
       start_date,
       end_date,
-      format,
-      include_personal_info,
-      include_recommendations,
-    }, {
-      responseType: format === 'pdf' || format === 'csv' ? 'blob' : 'json',
-    });
+      format = 'pdf',
+      include_personal_info = true,
+      include_recommendations = true,
+    } = options;
+
+    const response = await api.post(
+      '/api/predictions/generate_report/',
+      {
+        start_date,
+        end_date,
+        format,
+        include_personal_info,
+        include_recommendations,
+      },
+      {
+        responseType: format === 'pdf' || format === 'csv' ? 'blob' : 'json',
+      }
+    );
     return response.data;
   },
 
   // =========================
-  // ADMIN - MODEL TRAINING
+  // MACHINE LEARNING
   // =========================
+
+  /** Train or retrain Naive Bayes model */
   trainModel: async () => {
     const response = await api.post('/api/predictions/train_model/');
     return response.data;
+  },
+
+  /** Import dataset (Testing.csv + severity/description/precaution) and auto-train */
+  importDataset: async () => {
+    const response = await api.post('/api/predictions/import_dataset/');
+    return response.data;
+  },
+
+  /** Fetch model metadata (trained samples, total diseases, total symptoms) */
+  getModelSummary: async () => {
+    const response = await api.post('/api/predictions/train_model/');
+    // We reuse train_model endpoint in "dry" mode — no re-training logic on backend
+    // Alternatively, create a /model_summary/ endpoint later
+    return response.data.details;
   },
 };

@@ -88,9 +88,10 @@ export default function MedicalPredictionApp() {
     }
 
     // Validate symptom details
-    const hasIncompleteSymptoms = Object.values(formData.selectedSymptoms).some(
-      s => !s.severity || !s.duration || !s.onset
+   const hasIncompleteSymptoms = Object.values(formData.selectedSymptoms).some(
+      s => !s.duration || !s.onset
     );
+
 
     if (hasIncompleteSymptoms) {
       setError('Please complete all details for selected symptoms');
@@ -103,7 +104,7 @@ export default function MedicalPredictionApp() {
     try {
       const symptomsArray = Object.entries(formData.selectedSymptoms).map(([id, details]) => ({
         id: parseInt(id),
-        severity: details.severity,
+        // severity: details.severity,
         duration: details.duration,
         onset: details.onset
       }));
@@ -149,7 +150,7 @@ export default function MedicalPredictionApp() {
         delete newSymptoms[symptomId];
       } else {
         newSymptoms[symptomId] = {
-          severity: 5,
+          // severity: 5,
           duration: '',
           onset: 'GRADUAL'
         };
@@ -632,7 +633,7 @@ export default function MedicalPredictionApp() {
                             
                             {formData.selectedSymptoms[symptom.id] && (
                               <div className="mt-3 space-y-3 bg-gray-50 p-3 rounded">
-                                <div>
+                                {/* <div>
                                   <Label className="text-xs">Severity (1-10)</Label>
                                   <Input
                                     type="number"
@@ -642,7 +643,7 @@ export default function MedicalPredictionApp() {
                                     onChange={(e) => updateSymptomDetail(symptom.id, 'severity', parseInt(e.target.value))}
                                     className="mt-1"
                                   />
-                                </div>
+                                </div> */}
                                 <div>
                                   <Label className="text-xs">Duration</Label>
                                   <Input

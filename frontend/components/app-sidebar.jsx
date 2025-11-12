@@ -34,8 +34,9 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import MedicalPredictionApp from "./symptom/UserForm"
+import ModelReportPage from "./symptom/model-report"; // 1. Import the component
 import { useNavigationStore } from "@/lib/stores/navigation-store"
-import { Analytics } from "@/components/symptom/Analytics"
+import Analytics  from "@/components/symptom/Analytics"
 
 const data = {
   user: {
@@ -61,10 +62,11 @@ const data = {
       icon: IconChartBar,
       component: Analytics,
     },
-     {
+    {
       title: "Data Library",
       url: "#",
       icon: IconDatabase,
+      component: ModelReportPage, // 2. Attach the ModelReportPage here
     },
     {
       title: "Reports",
