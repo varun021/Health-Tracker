@@ -148,35 +148,84 @@ export default function ModelReportPage() {
 
   return (
     <div className="max-w-7xl mx-auto py-10 space-y-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between md:items-center gap-3">
-        <h1 className="text-3xl font-bold text-gray-900">
-          Model Overview Report
-        </h1>
-        <div className="flex gap-3 flex-wrap">
-          <Button variant="outline" onClick={fetchData}>
-            <RefreshCcw className="w-4 h-4 mr-2" /> Refresh
-          </Button>
-          <Button onClick={() => handleDownload("pdf")} disabled={downloading}>
-            {downloading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...
-              </>
-            ) : (
-              <>
-                <Download className="w-4 h-4 mr-2" /> Download PDF
-              </>
-            )}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => handleDownload("csv")}
-            disabled={downloading}
-          >
-            <Download className="w-4 h-4 mr-2" /> Download CSV
-          </Button>
-        </div>
-      </div>
+     {/* Header */}
+<div className="flex flex-col md:flex-row justify-between md:items-center gap-3">
+  <h1 className="text-3xl font-bold text-gray-900">
+    Model Overview Report
+  </h1>
+
+  <div className="flex gap-3 flex-wrap">
+
+    {/* 🔵 Refresh */}
+    <Button variant="outline" onClick={fetchData}>
+      <RefreshCcw className="w-4 h-4 mr-2" /> Refresh
+    </Button>
+
+    {/* 🟣 Train ML Model */}
+    <Button
+      variant="secondary"
+      onClick={async () => {
+        try {
+          setLoading(true);
+          const res = await userApi.trainModel();
+          toast.success("Model trained successfully!");
+          fetchData();
+        } catch (err) {
+          toast.error("Model training failed!");
+        } finally {
+          setLoading(false);
+        }
+      }}
+    >
+      <Brain className="w-4 h-4 mr-2" />
+      Train Model
+    </Button>
+
+    {/* 🟡 Import Dataset & Auto-Train */}
+    <Button
+      variant="secondary"
+      onClick={async () => {
+        try {
+          setLoading(true);
+          const res = await userApi.importDataset();
+          toast.success("Dataset imported & model auto-trained!");
+          fetchData();
+        } catch (err) {
+          toast.error("Dataset import failed!");
+        } finally {
+          setLoading(false);
+        }
+      }}
+      className="bg-yellow-500 hover:bg-yellow-600 text-white"
+    >
+      <Database className="w-4 h-4 mr-2" />
+      Import Dataset
+    </Button>
+
+    {/* 🔵 Download PDF */}
+    <Button onClick={() => handleDownload("pdf")} disabled={downloading}>
+      {downloading ? (
+        <>
+          <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...
+        </>
+      ) : (
+        <>
+          <Download className="w-4 h-4 mr-2" /> Download PDF
+        </>
+      )}
+    </Button>
+
+    {/* 🔵 Download CSV */}
+    <Button
+      variant="secondary"
+      onClick={() => handleDownload("csv")}
+      disabled={downloading}
+    >
+      <Download className="w-4 h-4 mr-2" /> Download CSV
+    </Button>
+  </div>
+</div>
+
 
       {/* Summary Cards */}
       <Card className="border-2 shadow-sm">

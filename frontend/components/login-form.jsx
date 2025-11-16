@@ -40,13 +40,29 @@ export function LoginForm({ className, ...props }) {
       toast.success("Login successful! Redirecting...");
       router.push("/dashboard");
     } catch (err) {
-      const errorMsg = err?.response?.data?.detail ?? err?.message ?? "Login failed";
+      let errorMsg = "Login failed";
+      const resData = err?.response?.data;
+      if (resData) {
+        if (typeof resData === "string") {
+          errorMsg = resData;
+        } else if (resData.error) {
+          errorMsg = resData.error;
+        } else if (resData.detail) {
+          errorMsg = resData.detail;
+        } else if (resData.message) {
+          errorMsg = resData.message;
+        } else {
+          errorMsg = JSON.stringify(resData);
+        }
+      } else if (err?.message) {
+        errorMsg = err.message;
+      }
       toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
   }, [username, password, setUser, router]);
-
+  
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="overflow-hidden p-0">
@@ -55,9 +71,9 @@ export function LoginForm({ className, ...props }) {
             <FieldGroup>
               <div className="flex flex-col items-center gap-2 text-center">
                 <h1 className="text-2xl font-bold">Welcome back</h1>
-                <p className="text-muted-foreground text-balance">
-                  Login to your Acme Inc account
-                </p>
+                {/* <p className="text-muted-foreground text-balance">
+                  Login to your account
+                </p> */}
               </div>
               
               <Field>
@@ -76,13 +92,13 @@ export function LoginForm({ className, ...props }) {
               <Field>
                 <div className="flex items-center">
                   <FieldLabel htmlFor="password">Password</FieldLabel>
-                  <a 
+                  {/* <a 
                     href="/forgot-password" 
                     className="ml-auto text-sm underline-offset-2 hover:underline"
                     tabIndex={-1}
                   >
                     Forgot your password?
-                  </a>
+                  </a> */}
                 </div>
                 <Input 
                   id="password" 

@@ -13,7 +13,6 @@
 //     </div>
 //   );
 // }
-
 "use client";
 import React, { useEffect, useState } from "react";
 import {
@@ -29,8 +28,6 @@ import {
   TrendingUp,
   HeartPulse,
   Thermometer,
-  ArrowUpRight,
-  ArrowDownRight,
 } from "lucide-react";
 import { userApi } from "@/lib/api-services";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -49,12 +46,19 @@ import {
   Bar,
 } from "recharts";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function Analytics() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
+
   const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
 
   useEffect(() => {
@@ -92,12 +96,20 @@ export default function Analytics() {
     );
   }
 
-  const { overview, trends, disease_analytics, symptom_analytics, health_score } = data;
+  // SAFE VALUES (prevents all crashes)
+  const overview = data.overview || {};
+  const trends = data.trends || [];
+  const disease_analytics = data.disease_analytics || [];
+  const symptom_analytics = data.symptom_analytics || [];
+
+  const avgSeverity = Number(overview.avg_severity ?? 0);
+  const healthScore = Number(data.health_score ?? 0);
 
   return (
     <div className="max-w-7xl mx-auto py-10 space-y-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <h1 className="text-3xl font-bold">Health Analytics Dashboard</h1>
+
         <Select value={days.toString()} onValueChange={(v) => setDays(Number(v))}>
           <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="Select period" />
@@ -114,22 +126,25 @@ export default function Analytics() {
       <div className="grid md:grid-cols-4 gap-4">
         <OverviewCard
           title="Total Predictions"
-          value={overview.total_predictions}
+          value={overview.total_predictions ?? 0}
           icon={<Activity className="w-5 h-5 text-blue-600" />}
           color="text-blue-600"
         />
+
         <OverviewCard
           title="Average Severity"
-          value={`${overview.avg_severity.toFixed(1)}%`}
+          value={`${avgSeverity.toFixed(1)}%`}
           icon={<HeartPulse className="w-5 h-5 text-orange-500" />}
           color="text-orange-500"
         />
+
         <OverviewCard
           title="Health Score"
-          value={health_score.toFixed(2)}
+          value={healthScore.toFixed(2)}
           icon={<TrendingUp className="w-5 h-5 text-green-600" />}
           color="text-green-600"
         />
+
         <OverviewCard
           title="Most Common Disease"
           value={overview.most_common_disease || "—"}
@@ -169,7 +184,7 @@ export default function Analytics() {
         </CardContent>
       </Card>
 
-      {/* Disease & Symptom Distribution */}
+      {/* Disease & Symptom Charts */}
       <div className="grid md:grid-cols-2 gap-6">
         {/* Disease Occurrences */}
         <Card className="border">
@@ -192,10 +207,7 @@ export default function Analytics() {
                     label
                   >
                     {disease_analytics.map((_, index) => (
-                      <Cell
-                        key={index}
-                        fill={COLORS[index % COLORS.length]}
-                      />
+                      <Cell key={index} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip />
@@ -209,7 +221,7 @@ export default function Analytics() {
           </CardContent>
         </Card>
 
-        {/* Top Symptoms */}
+        {/* Symptom Frequency */}
         <Card className="border">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-red-600">
@@ -239,7 +251,7 @@ export default function Analytics() {
   );
 }
 
-/* Reusable Card for Overview Stats */
+/* Safe Overview Card Component */
 function OverviewCard({ title, value, icon, color }) {
   return (
     <Card className="border hover:shadow-md transition-all">
@@ -249,7 +261,7 @@ function OverviewCard({ title, value, icon, color }) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <p className={`text-3xl font-bold ${color}`}>{value}</p>
+        <p className={`text-2xl font-bold ${color}`}>{value}</p>
       </CardContent>
     </Card>
   );

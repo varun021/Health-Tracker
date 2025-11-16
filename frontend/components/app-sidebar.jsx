@@ -37,6 +37,7 @@ import MedicalPredictionApp from "./symptom/UserForm"
 import ModelReportPage from "./symptom/model-report"; // 1. Import the component
 import { useNavigationStore } from "@/lib/stores/navigation-store"
 import Analytics  from "@/components/symptom/Analytics"
+import ReportsPage from "./symptom/Reports"
 
 const data = {
   user: {
@@ -72,6 +73,7 @@ const data = {
       title: "Reports",
       url: "#",
       icon: IconReport,
+      component: ReportsPage,
     },
   ],
   navClouds: [

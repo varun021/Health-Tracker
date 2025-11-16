@@ -119,7 +119,9 @@ export const userApi = {
   },
 
   getPredictionHistory: async (page = 1, pageSize = 20) => {
-    const response = await api.get(`/api/predictions/history/?page=${page}&page_size=${pageSize}`);
+    const response = await api.get(
+      `/api/predictions/history/?page=${page}&page_size=${pageSize}`
+    );
     return response.data;
   },
 
@@ -152,6 +154,7 @@ export const userApi = {
         responseType: format === 'pdf' || format === 'csv' ? 'blob' : 'json',
       }
     );
+
     return response.data;
   },
 
@@ -159,23 +162,28 @@ export const userApi = {
   // MACHINE LEARNING
   // =========================
 
-  /** Train or retrain Naive Bayes model */
   trainModel: async () => {
     const response = await api.post('/api/predictions/train_model/');
     return response.data;
   },
 
-  /** Import dataset (Testing.csv + severity/description/precaution) and auto-train */
   importDataset: async () => {
     const response = await api.post('/api/predictions/import_dataset/');
     return response.data;
   },
 
-  /** Fetch model metadata (trained samples, total diseases, total symptoms) */
+  /** FIXED — Fetch model metadata without triggering training */
   getModelSummary: async () => {
-    const response = await api.post('/api/predictions/train_model/');
-    // We reuse train_model endpoint in "dry" mode — no re-training logic on backend
-    // Alternatively, create a /model_summary/ endpoint later
-    return response.data.details;
+    const [diseasesRes, symptomsRes, historyRes] = await Promise.all([
+      api.get('/api/diseases/'),
+      api.get('/api/symptoms/'),
+      api.get('/api/predictions/history/?page=1&page_size=1'),
+    ]);
+
+    return {
+      diseases: diseasesRes.data.length,
+      symptoms: symptomsRes.data.length,
+      samples_trained: historyRes.data.count,
+    };
   },
 };

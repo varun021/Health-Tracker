@@ -163,9 +163,9 @@ class PredictionViewSet(viewsets.ViewSet):
                 'severity_interpretation': self.get_severity_interpretation(severity_category),
                 'next_steps': self.get_next_steps(severity_category, primary_disease.name),
                 'disclaimer': (
-                    "This is an AI-assisted prediction using a Hybrid ML model. "
-                    "It should not replace professional medical advice."
+                    "This result is generated using a machine learning model. It is meant for guidance only and should not replace medical consultation."
                 )
+
             }
         }
         return Response(result, status=status.HTTP_201_CREATED)
