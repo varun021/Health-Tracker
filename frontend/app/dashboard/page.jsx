@@ -2,8 +2,6 @@
 
 import ProtectedRoute from '@/components/auth/protected-route'
 import { AppSidebar } from "@/components/app-sidebar"
-import { ChartAreaInteractive } from "@/components/chart-area-interactive"
-import { SectionCards } from "@/components/section-cards"
 import { SiteHeader } from "@/components/site-header"
 import {
   SidebarInset,
@@ -20,35 +18,24 @@ export default function Page() {
   return (
     <ProtectedRoute>
       <SidebarProvider
-        style={
-          {
-            "--sidebar-width": "calc(var(--spacing) * 72)",
-            "--header-height": "calc(var(--spacing) * 12)"
-          }
-        }>
+        style={{
+          "--sidebar-width": "calc(var(--spacing) * 72)",
+          "--header-height": "calc(var(--spacing) * 12)"
+        }}
+      >
         <AppSidebar variant="inset" user={user} />
         <SidebarInset>
           <SiteHeader />
-          <div className="flex flex-1 flex-col">
-            {activeComponent ? (
-              <div className="flex-1 p-6">
-                <activeComponent.component />
-              </div>
-            ) : (
-              <div className="@container/main flex flex-1 flex-col gap-2">
-                {/* <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-                  <SectionCards />
-                  <div className="px-4 lg:px-6">
-                    <ChartAreaInteractive />
-                  </div>
-                </div> */}
 
-                <div className="flex-1 p-6">
-                  <UserForm />
-                </div>
-              </div>
+          {/* FIX: removed unnecessary flex wrappers */}
+          <div className="p-6 w-full h-auto overflow-auto">
+            {activeComponent ? (
+              <activeComponent.component />
+            ) : (
+              <UserForm />
             )}
           </div>
+
         </SidebarInset>
       </SidebarProvider>
     </ProtectedRoute>

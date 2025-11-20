@@ -186,4 +186,30 @@ export const userApi = {
       samples_trained: historyRes.data.count,
     };
   },
+
+  // =========================
+  // CHAT ASSISTANT
+  // =========================
+  
+    sendChatMessage: async (payload) => {
+      const response = await api.post("/api/chat/send/", payload);
+      return response.data;
+    },
+
+    getChatHistory: async () => {
+      const response = await api.get("/api/chat/history/");
+      return response.data;
+    },
+
+    getChatSummary: async () => {
+      const response = await api.get("/api/chat/summary/");
+      return response.data;
+    },
+
+    restartChat: async (hardDelete = false) => {
+      const response = await api.post("/api/chat/restart/", { hard_delete: hardDelete });
+      return response.data;
+    },
+
+
 };

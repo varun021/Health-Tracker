@@ -54,7 +54,14 @@ export default function MedicalPredictionApp() {
     diseaseInput: '',
   });
 
+  // Get store values FIRST, before using them
   const { symptoms, prediction, loading, error, setSymptoms, setPrediction, setLoading, setError, reset } = useStore();
+
+  // Now safe to use symptoms
+  const [symptomQuery, setSymptomQuery] = useState('');
+  const filteredSymptoms = symptoms.filter((s) =>
+    s.name.toLowerCase().includes(symptomQuery.trim().toLowerCase())
+  );
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -522,7 +529,7 @@ export default function MedicalPredictionApp() {
         <CardHeader >
           <CardTitle className="text-2xl">Medical Prediction System</CardTitle>
           <CardDescription >
-            Enter comprehensive patient details for AI-powered health analysis
+            Enter comprehensive patient details for health analysis
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
@@ -611,11 +618,23 @@ export default function MedicalPredictionApp() {
             <div className="space-y-4">
               <h3 className="text-lg font-semibold border-b pb-2">Symptoms *</h3>
               <Card className="p-4 max-h-96 overflow-y-auto">
+                {/* search input */}
+                <div className="mb-4">
+                  <Input
+                    placeholder="Search symptoms..."
+                    value={symptomQuery}
+                    onChange={(e) => setSymptomQuery(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+
                 {symptoms.length === 0 ? (
                   <p className="text-sm text-gray-500">Loading symptoms...</p>
+                ) : filteredSymptoms.length === 0 ? (
+                  <p className="text-sm text-gray-500">No symptoms match "{symptomQuery}"</p>
                 ) : (
                   <div className="space-y-4">
-                    {symptoms.map((symptom) => (
+                    {filteredSymptoms.map((symptom) => (
                       <div key={symptom.id} className="border rounded-lg p-4">
                         <div className="flex items-start space-x-3">
                           <Checkbox
@@ -633,17 +652,6 @@ export default function MedicalPredictionApp() {
                             
                             {formData.selectedSymptoms[symptom.id] && (
                               <div className="mt-3 space-y-3 bg-gray-50 p-3 rounded">
-                                {/* <div>
-                                  <Label className="text-xs">Severity (1-10)</Label>
-                                  <Input
-                                    type="number"
-                                    min="1"
-                                    max="10"
-                                    value={formData.selectedSymptoms[symptom.id].severity}
-                                    onChange={(e) => updateSymptomDetail(symptom.id, 'severity', parseInt(e.target.value))}
-                                    className="mt-1"
-                                  />
-                                </div> */}
                                 <div>
                                   <Label className="text-xs">Duration</Label>
                                   <Input
@@ -887,7 +895,7 @@ export default function MedicalPredictionApp() {
       <Alert className="mt-6">
         <AlertCircle className="h-4 w-4" />
         <AlertDescription className="text-xs">
-          This system provides AI-based predictions for educational purposes only. 
+          This system provides ML-based predictions for educational purposes only. 
           Always consult qualified healthcare professionals for medical decisions.
         </AlertDescription>
       </Alert>
