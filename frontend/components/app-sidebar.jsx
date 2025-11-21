@@ -38,8 +38,9 @@ import ModelReportPage from "./symptom/model-report";
 import Analytics from "@/components/symptom/Analytics";
 import ReportsPage from "./symptom/Reports";
 import ChatAssistant from "./symptom/ChatAssistant";
+import AIChatAssistant from "./symptom/AIChatAssistant";
 
-import { MessageCircle } from "lucide-react";
+import { BotMessageSquareIcon, MessageCircle } from "lucide-react";
 import { useNavigationStore } from "@/lib/stores/navigation-store";
 
 const navItems = [
@@ -55,12 +56,12 @@ const navItems = [
     icon: IconChartBar,
     component: Analytics,
   },
-  {
-    title: "Data Library",
-    url: "/data",
-    icon: IconDatabase,
-    component: ModelReportPage,
-  },
+  // {
+  //   title: "Data Library",
+  //   url: "/data",
+  //   icon: IconDatabase,
+  //   component: ModelReportPage,
+  // },
   {
     title: "Reports",
     url: "/reports",
@@ -72,6 +73,12 @@ const navItems = [
     url: "/chat",
     icon: MessageCircle,
     component: ChatAssistant,
+  },
+   {
+    title: "AI Chat Assistant",
+    url: "/aichat",
+    icon: BotMessageSquareIcon,
+    component: AIChatAssistant,
   },
 ];
 

@@ -210,6 +210,20 @@ export const userApi = {
       const response = await api.post("/api/chat/restart/", { hard_delete: hardDelete });
       return response.data;
     },
+    // =========================
+    // GEMINI AI CHAT ENDPOINTS
+    // =========================
+
+    geminiChat: async (message) => {
+      const response = await api.post("/api/chat/ai/", { message });
+      return response.data;
+    },
+
+    geminiSymptomAnalysis: async (text) => {
+      const response = await api.post("/api/chat/ai_symptoms/", { text });
+      return response.data;
+    },
+
 
 
 };
