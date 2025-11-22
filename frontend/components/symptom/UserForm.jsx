@@ -723,7 +723,7 @@ export default function MedicalPredictionApp() {
                     </div>
                   )}
                 </div>
-                <div>
+                {/* <div>
                   <Label htmlFor="allergies">Allergies</Label>
                   <Input
                     id="allergies"
@@ -732,7 +732,7 @@ export default function MedicalPredictionApp() {
                     onChange={(e) => setFormData(prev => ({ ...prev, allergies: e.target.value }))}
                     className="mt-1"
                   />
-                </div>
+                </div> */}
                 <div>
                   <Label htmlFor="medications">Current Medications</Label>
                   <Input
@@ -743,7 +743,7 @@ export default function MedicalPredictionApp() {
                     className="mt-1"
                   />
                 </div>
-                <div>
+                {/* <div>
                   <Label htmlFor="family_history">Family History</Label>
                   <Input
                     id="family_history"
@@ -752,7 +752,7 @@ export default function MedicalPredictionApp() {
                     onChange={(e) => setFormData(prev => ({ ...prev, family_history: e.target.value }))}
                     className="mt-1"
                   />
-                </div>
+                </div> */}
               </div>
             </div>
 
@@ -851,7 +851,7 @@ export default function MedicalPredictionApp() {
             </div>
 
             {/* Travel History */}
-            <div className="space-y-4">
+            {/* <div className="space-y-4">
               <h3 className="text-lg font-semibold border-b pb-2">Additional Information</h3>
               <div>
                 <Label htmlFor="travel_history">Travel History</Label>
@@ -863,7 +863,7 @@ export default function MedicalPredictionApp() {
                   className="mt-1"
                 />
               </div>
-            </div>
+            </div> */}
 
             {error && (
               <Alert variant="destructive">

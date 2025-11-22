@@ -376,7 +376,8 @@ import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism"; // Switched to Light theme for code to match Swiss vibe
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism"; 
+import { Card } from "../ui/card";
 
 /* --- Utility: JSON Check --- */
 const isJsonString = (str) => {
@@ -504,6 +505,7 @@ export default function GeminiChat() {
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef(null);
 
+  // Auto-scroll to bottom
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
@@ -528,10 +530,14 @@ export default function GeminiChat() {
   };
 
   return (
-    <div className="flex flex-col h-[85vh] max-w-3xl mx-auto mt-8 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden font-sans">
+    /* 1. HEIGHT CONSTRAINT & FLEX COLUMN
+       - h-[85vh] sets the total height.
+       - flex-col ensures we stack: Header (Top) -> Chat (Middle) -> Input (Bottom).
+    */
+    <Card className="flex flex-col  bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden font-sans">
       
-      {/* 1. Minimal Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white/80 backdrop-blur-sm z-10 sticky top-0">
+      {/* --- 1. Fixed Header --- */}
+      <div className="flex-none flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white/80 backdrop-blur-sm z-10">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-black text-white rounded-full flex items-center justify-center">
             <Cpu size={16} />
@@ -549,9 +555,14 @@ export default function GeminiChat() {
         </div>
       </div>
 
-      {/* 2. Chat Area - Clean Canvas */}
-      <ScrollArea className="flex-1 bg-white">
-        <div className="flex flex-col space-y-8 p-6 min-h-full">
+      {/* --- 2. Scrollable Chat Area --- */}
+      {/* CRITICAL FIX:
+          - `flex-1`: Takes up all available space between Header and Input.
+          - `min-h-0`: Prevents the flex child from refusing to shrink below its content size (fixing the no-scroll bug).
+          - `w-full`: Ensures full width.
+      */}
+      <ScrollArea className="flex-1 min-h-0 bg-white w-full ">
+        <div className="flex flex-col space-y-8 p-6">
           
           {messages.length === 0 && (
             <div className="flex-1 flex flex-col items-center justify-center opacity-30 mt-12">
@@ -589,8 +600,8 @@ export default function GeminiChat() {
                     className={`
                       text-[14px] px-4 py-3 rounded-2xl
                       ${isUser 
-                        ? "bg-gray-100 text-gray-900 rounded-tr-sm" // User: Light Gray Bubble
-                        : "bg-transparent text-gray-800 p-0 rounded-none" // Bot: No Bubble, just text
+                        ? "bg-gray-100 text-gray-900 rounded-tr-sm"
+                        : "bg-transparent text-gray-800 p-0 rounded-none"
                       }
                     `}
                   >
@@ -620,12 +631,13 @@ export default function GeminiChat() {
             </div>
           )}
           
-          <div ref={scrollRef} />
+          {/* Invisible element to scroll to */}
+          <div ref={scrollRef} className="h-1" />
         </div>
       </ScrollArea>
 
-      {/* 3. Input Area - Floating & Minimal */}
-      <div className="p-6 pt-2">
+      {/* --- 3. Fixed Input Area --- */}
+      <div className="flex-none p-6 pt-2 bg-white">
         <div className="relative flex items-end gap-2 border border-gray-200 rounded-xl bg-white shadow-[0_2px_10px_rgba(0,0,0,0.02)] hover:border-gray-300 transition-colors p-1.5 focus-within:ring-1 focus-within:ring-black focus-within:border-black">
           <Input
             className="flex-1 min-h-[44px] border-none shadow-none focus-visible:ring-0 bg-transparent text-sm placeholder:text-gray-400 py-3 pl-3"
@@ -659,6 +671,6 @@ export default function GeminiChat() {
            <p className="text-[10px] text-gray-400">Powered by Gemini • AI can make mistakes.</p>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

@@ -63,7 +63,7 @@ const navItems = [
   //   component: ModelReportPage,
   // },
   {
-    title: "Reports",
+    title: "History",
     url: "/reports",
     icon: IconReport,
     component: ReportsPage,
@@ -75,7 +75,7 @@ const navItems = [
     component: ChatAssistant,
   },
    {
-    title: "AI Chat Assistant",
+    title: "Ask AI",
     url: "/aichat",
     icon: BotMessageSquareIcon,
     component: AIChatAssistant,

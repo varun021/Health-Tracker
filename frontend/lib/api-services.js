@@ -39,7 +39,6 @@
 //   }
 // };
 
-
 import api from './axios-config';
 
 export const userApi = {
@@ -100,6 +99,18 @@ export const userApi = {
     return response.data;
   },
 
+  getPredictionHistory: async (page = 1, pageSize = 20) => {
+    const response = await api.get(
+      `/api/predictions/history/?page=${page}&page_size=${pageSize}`
+    );
+    return response.data;
+  },
+
+  deleteHistory: async (id) => {
+    const response = await api.delete(`/api/predictions/delete_history/${id}/`);
+    return response.data;
+  },
+
   // =========================
   // ANALYTICS & REPORTS
   // =========================
@@ -115,13 +126,6 @@ export const userApi = {
 
   getRecommendationsBasedOnHistory: async () => {
     const response = await api.get('/api/predictions/recommendations_based_on_history/');
-    return response.data;
-  },
-
-  getPredictionHistory: async (page = 1, pageSize = 20) => {
-    const response = await api.get(
-      `/api/predictions/history/?page=${page}&page_size=${pageSize}`
-    );
     return response.data;
   },
 
@@ -161,7 +165,6 @@ export const userApi = {
   // =========================
   // MACHINE LEARNING
   // =========================
-
   trainModel: async () => {
     const response = await api.post('/api/predictions/train_model/');
     return response.data;
@@ -172,7 +175,6 @@ export const userApi = {
     return response.data;
   },
 
-  /** FIXED — Fetch model metadata without triggering training */
   getModelSummary: async () => {
     const [diseasesRes, symptomsRes, historyRes] = await Promise.all([
       api.get('/api/diseases/'),
@@ -190,40 +192,33 @@ export const userApi = {
   // =========================
   // CHAT ASSISTANT
   // =========================
-  
-    sendChatMessage: async (payload) => {
-      const response = await api.post("/api/chat/send/", payload);
-      return response.data;
-    },
+  sendChatMessage: async (payload) => {
+    const response = await api.post("/api/chat/send/", payload);
+    return response.data;
+  },
 
-    getChatHistory: async () => {
-      const response = await api.get("/api/chat/history/");
-      return response.data;
-    },
+  getChatHistory: async () => {
+    const response = await api.get("/api/chat/history/");
+    return response.data;
+  },
 
-    getChatSummary: async () => {
-      const response = await api.get("/api/chat/summary/");
-      return response.data;
-    },
+  getChatSummary: async () => {
+    const response = await api.get("/api/chat/summary/");
+    return response.data;
+  },
 
-    restartChat: async (hardDelete = false) => {
-      const response = await api.post("/api/chat/restart/", { hard_delete: hardDelete });
-      return response.data;
-    },
-    // =========================
-    // GEMINI AI CHAT ENDPOINTS
-    // =========================
+  restartChat: async (hardDelete = false) => {
+    const response = await api.post("/api/chat/restart/", { hard_delete: hardDelete });
+    return response.data;
+  },
 
-    geminiChat: async (message) => {
-      const response = await api.post("/api/chat/ai/", { message });
-      return response.data;
-    },
+  geminiChat: async (message) => {
+    const response = await api.post("/api/chat/ai/", { message });
+    return response.data;
+  },
 
-    geminiSymptomAnalysis: async (text) => {
-      const response = await api.post("/api/chat/ai_symptoms/", { text });
-      return response.data;
-    },
-
-
-
+  geminiSymptomAnalysis: async (text) => {
+    const response = await api.post("/api/chat/ai_symptoms/", { text });
+    return response.data;
+  },
 };

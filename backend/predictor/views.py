@@ -716,6 +716,28 @@ class PredictionViewSet(viewsets.ViewSet):
             return Response({'message': 'Dataset imported successfully'})
         except Exception as e:
             return Response({'error': str(e)}, status=500)
+        
+     # DELETE /api/predictions/delete_history/{id}/   
+    @action(detail=True, methods=['delete'])
+    def delete_history(self, request, pk=None):
+        """Delete a specific submission from history"""
+        user = request.user
+
+        try:
+            submission = UserSubmission.objects.get(id=pk, user=user)
+        except UserSubmission.DoesNotExist:
+            return Response(
+                {'error': 'History record not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        submission.delete()  # Cascades to symptoms + predictions
+
+        return Response(
+            {'message': 'History record deleted successfully'},
+            status=status.HTTP_200_OK
+        )
+
 
             
 

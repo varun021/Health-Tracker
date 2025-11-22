@@ -20,22 +20,21 @@ export default function Page() {
       <SidebarProvider
         style={{
           "--sidebar-width": "calc(var(--spacing) * 72)",
-          "--header-height": "calc(var(--spacing) * 12)"
+          "--header-height": "calc(var(--spacing) * 12)",
         }}
       >
         <AppSidebar variant="inset" user={user} />
-        <SidebarInset>
-          <SiteHeader />
 
-          {/* FIX: removed unnecessary flex wrappers */}
-          <div className="p-6 w-full h-auto overflow-auto">
+        <SidebarInset className="flex flex-col h-full min-h-screen">
+          {/* <SiteHeader /> */}
+
+          <main className="flex-1 p-6 overflow-x-hidden">
             {activeComponent ? (
               <activeComponent.component />
             ) : (
               <UserForm />
             )}
-          </div>
-
+          </main>
         </SidebarInset>
       </SidebarProvider>
     </ProtectedRoute>
