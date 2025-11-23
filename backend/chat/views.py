@@ -24,7 +24,6 @@ from chat.gemini_client import health_chat, analyze_symptoms
 import datetime
 import re
 
-
 # ======================================================
 # Emergency keyword detection
 # ======================================================
@@ -42,12 +41,11 @@ EMERGENCY_KEYWORDS = [
 
 
 def contains_emergency(text: str) -> bool:
-    text = text.lower()
-    return any(re.search(pattern, text) for pattern in EMERGENCY_KEYWORDS)
+    return any(re.search(p, text.lower()) for p in EMERGENCY_KEYWORDS)
 
 
 # ======================================================
-# FOLLOW-UP ADJUSTMENT RULES
+# FOLLOWUP BOOST RULES
 # ======================================================
 FOLLOWUP_BOOSTS = {
     "rash": {"yes": 10.0, "no": -12.0},
@@ -59,7 +57,7 @@ FOLLOWUP_BOOSTS = {
 
 
 # ======================================================
-# FINAL ChatViewSet (Merged)
+# MAIN ChatViewSet
 # ======================================================
 class ChatViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
@@ -69,7 +67,7 @@ class ChatViewSet(viewsets.ViewSet):
         self.predictor = HybridPredictor()
 
     # ---------------------------------------------------------
-    # Helper: last meaningful user message
+    # Helper: Get last meaningful message (not yes/no)
     # ---------------------------------------------------------
     def _last_user_message(self, user):
         return (
@@ -80,33 +78,33 @@ class ChatViewSet(viewsets.ViewSet):
         )
 
     # ---------------------------------------------------------
-    # Helper: apply followup booster to predictions
+    # Helper: Apply followup scoring adjustments
     # ---------------------------------------------------------
-    def _apply_followup_adjustments(self, preds, followup_id, followup_value):
-        base = FOLLOWUP_BOOSTS.get(followup_id, {"yes": 0, "no": 0})
-        delta = base.get(followup_value, 0)
+    def _apply_followup_adjustments(self, preds, fid, val):
+        base = FOLLOWUP_BOOSTS.get(fid, {"yes": 0, "no": 0})
+        delta = base.get(val, 0)
 
         for p in preds:
-            p["confidence"] = max(0.0, min(100.0, p["confidence"] + delta))
+            p["confidence"] = max(0, min(100, p["confidence"] + delta))
 
+            # Disease-aware adjustment
             try:
-                ds_list = p["disease"].disease_symptoms.all()
-                for ds in ds_list:
-                    if followup_id.lower() in ds.symptom.name.lower():
-                        if followup_value == "no":
-                            p["confidence"] = max(0, p["confidence"] - 8)
+                for ds in p["disease"].disease_symptoms.all():
+                    if fid.lower() in ds.symptom.name.lower():
+                        if val == "no":
+                            p["confidence"] -= 8
                         else:
-                            p["confidence"] = min(100, p["confidence"] + 5)
+                            p["confidence"] += 5
             except:
                 pass
 
-            p["confidence"] = round(p["confidence"], 2)
+            p["confidence"] = round(max(0, min(100, p["confidence"])), 2)
 
         preds.sort(key=lambda x: x["confidence"], reverse=True)
         return preds
 
     # ---------------------------------------------------------
-    # NLP Medical Chat
+    # MAIN SEND ENDPOINT (Chat flow + Followups)
     # ---------------------------------------------------------
     @action(detail=False, methods=["post"])
     def send(self, request):
@@ -115,7 +113,9 @@ class ChatViewSet(viewsets.ViewSet):
         followup = request.data.get("followup")
         answers = request.data.get("answers", {})
 
-        # ---------------- Follow-up flow ----------------
+        # ===========================
+        # FOLLOW-UP FLOW
+        # ===========================
         if followup or answers:
             if followup:
                 fid = list(followup.keys())[0]
@@ -134,28 +134,21 @@ class ChatViewSet(viewsets.ViewSet):
             except:
                 preds = []
 
+            # Apply each followup answer
             for fid, val in answers.items():
-                normalized = (
-                    "yes" if str(val).lower() in ["yes", "y", "true", "1"] else "no"
-                )
+                val_norm = "yes" if str(val).lower() in ["yes", "y", "true", "1"] else "no"
 
                 ChatMessage.objects.create(
                     user=user,
                     role="user",
-                    content=normalized,
-                    metadata={
-                        "from_followup": True,
-                        "followup_id": fid,
-                        "followup_value": normalized,
-                    },
+                    content=val_norm,
+                    metadata={"from_followup": True, "followup_id": fid, "followup_value": val_norm},
                 )
 
-                preds = self._apply_followup_adjustments(preds, fid, normalized)
+                preds = self._apply_followup_adjustments(preds, fid, val_norm)
 
             followups = generate_followup_questions(original_text, extracted)
-            explanations = explain_predictions(
-                preds, extracted, lambda d: d.disease_symptoms.all()
-            )
+            explanations = explain_predictions(preds, extracted, lambda d: d.disease_symptoms.all())
 
             reply = "Updated possible conditions:\n"
             for p in preds:
@@ -168,8 +161,7 @@ class ChatViewSet(viewsets.ViewSet):
                 metadata={
                     "symptoms": extracted,
                     "predictions": [
-                        {"disease": p["disease"].name, "confidence": p["confidence"]}
-                        for p in preds
+                        {"disease": p["disease"].name, "confidence": p["confidence"]} for p in preds
                     ],
                     "followups": followups,
                     "explanations": explanations,
@@ -180,12 +172,16 @@ class ChatViewSet(viewsets.ViewSet):
                 {
                     "assistant": reply,
                     "symptoms": extracted,
-                    "predictions": preds,
+                    "predictions": [
+                        {"disease": p["disease"].name, "confidence": p["confidence"]} for p in preds
+                    ],
                     "followups": followups,
                 }
             )
 
-        # ---------------- NEW MESSAGE flow ----------------
+        # ===========================
+        # NEW MESSAGE FLOW
+        # ===========================
         if not message:
             return Response({"error": "Message cannot be empty"}, status=400)
 
@@ -196,22 +192,21 @@ class ChatViewSet(viewsets.ViewSet):
 
         # Emergency detection
         if contains_emergency(message) or contains_critical_symptom(message, extracted):
-            msg = "⚠️ Your symptoms may indicate a serious medical issue. Please seek emergency medical care immediately."
-            ChatMessage.objects.create(
-                user=user, role="assistant", content=msg, metadata={"escalation": True}
+            msg = (
+                "⚠️ Your symptoms may indicate a serious medical issue.\n"
+                "Please seek emergency medical care immediately."
             )
-            return Response({"assistant": msg, "emergency": True}, status=200)
+            ChatMessage.objects.create(user=user, role="assistant", content=msg, metadata={"escalation": True})
+            return Response({"assistant": msg, "emergency": True})
 
-        # ML prediction
+        # ML predictions
         try:
             preds = self.predictor.predict(predictor_input, user=user)
         except:
             preds = []
 
         followups = generate_followup_questions(message, extracted)
-        explanations = explain_predictions(
-            preds, extracted, lambda d: d.disease_symptoms.all()
-        )
+        explanations = explain_predictions(preds, extracted, lambda d: d.disease_symptoms.all())
 
         reply = "I detected these symptoms:\n"
         for s in extracted:
@@ -228,8 +223,7 @@ class ChatViewSet(viewsets.ViewSet):
             metadata={
                 "symptoms": extracted,
                 "predictions": [
-                    {"disease": p["disease"].name, "confidence": p["confidence"]}
-                    for p in preds
+                    {"disease": p["disease"].name, "confidence": p["confidence"]} for p in preds
                 ],
                 "followups": followups,
                 "explanations": explanations,
@@ -240,78 +234,64 @@ class ChatViewSet(viewsets.ViewSet):
             {
                 "assistant": reply,
                 "symptoms": extracted,
-                "predictions": preds,
+                "predictions": [
+                    {"disease": p["disease"].name, "confidence": p["confidence"]} for p in preds
+                ],
                 "followups": followups,
-            },
-            status=200,
+            }
         )
 
     # ---------------------------------------------------------
-    # Chat history
+    # HISTORY
     # ---------------------------------------------------------
     @action(detail=False, methods=["get"])
     def history(self, request):
-        user = request.user
-        messages = ChatMessage.objects.filter(user=user).order_by("created_at")
-        serializer = ChatMessageSerializer(messages, many=True)
-        return Response({"results": serializer.data}, status=200)
+        msgs = ChatMessage.objects.filter(user=request.user).order_by("created_at")
+        return Response({"results": ChatMessageSerializer(msgs, many=True).data})
 
     # ---------------------------------------------------------
-    # Summary
+    # SUMMARY
     # ---------------------------------------------------------
     @action(detail=False, methods=["get"])
     def summary(self, request):
         user = request.user
-        msgs = (
-            ChatMessage.objects.filter(user=user)
-            .order_by("-created_at")[:200][::-1]
-        )
+        msgs = ChatMessage.objects.filter(user=user).order_by("-created_at")[:200][::-1]
 
-        unique_symptoms = {}
+        sym_map = {}
         top_preds = {}
         followup_answers = {}
 
         for m in msgs:
             md = m.metadata or {}
 
-            # symptoms
             for s in md.get("symptoms", []):
-                unique_symptoms[s["name"]] = s
+                sym_map[s["name"]] = s
 
-            # predictions
             for p in md.get("predictions", []):
-                name = p["disease"]
+                d = p["disease"]
                 conf = float(p["confidence"])
-                top_preds[name] = max(top_preds.get(name, 0), conf)
+                top_preds[d] = max(top_preds.get(d, 0), conf)
 
-            # followups
             if m.role == "user" and md.get("from_followup"):
                 followup_answers[md["followup_id"]] = md["followup_value"]
 
-        health_score = (
-            100 - (sum(top_preds.values()) / len(top_preds))
-            if top_preds
-            else 75
-        )
+        health_score = 100 - (sum(top_preds.values()) / len(top_preds)) if top_preds else 75
 
         return Response(
             {
-                "symptoms": list(unique_symptoms.values()),
-                "top_predictions": [
-                    {"disease": k, "confidence": v}
-                    for k, v in sorted(
-                        top_preds.items(), key=lambda x: -x[1]
-                    )
-                ],
+                "symptoms": list(sym_map.values()),
+                "top_predictions": sorted(
+                    [{"disease": k, "confidence": v} for k, v in top_preds.items()],
+                    key=lambda x: -x["confidence"],
+                ),
                 "followup_answers": followup_answers,
                 "health_score": round(health_score, 2),
                 "last_updated": datetime.datetime.utcnow().isoformat() + "Z",
-            },
-            status=200,
+            }
         )
 
     # ---------------------------------------------------------
-    # Restart chat session
+    # RESTART
     # ---------------------------------------------------------
     @action(detail=False, methods=["post"])
     def restart(self, request):
@@ -320,28 +300,20 @@ class ChatViewSet(viewsets.ViewSet):
 
         if hard_delete:
             ChatMessage.objects.filter(user=user).delete()
-            ChatMessage.objects.create(
-                user=user,
-                role="assistant",
-                content="Chat cleared. You can start a new conversation.",
-            )
+            ChatMessage.objects.create(user=user, role="assistant", content="Chat cleared. Start again.")
             return Response({"status": "cleared"})
 
         ChatMessage.objects.create(
-            user=user,
-            role="assistant",
-            content="Conversation restarted. Please describe your symptoms.",
+            user=user, role="assistant", content="Conversation restarted. Please describe your symptoms."
         )
         return Response({"status": "restarted"})
 
     # ---------------------------------------------------------
-    # GEMINI AI Chat
+    # GEMINI Chat
     # ---------------------------------------------------------
     @action(detail=False, methods=["post"])
     def ai(self, request):
-        user = request.user
         message = (request.data.get("message") or "").strip()
-
         if not message:
             return Response({"error": "Message cannot be empty"}, status=400)
 
@@ -350,30 +322,19 @@ class ChatViewSet(viewsets.ViewSet):
         except Exception as e:
             return Response({"error": f"Gemini Error: {str(e)}"}, status=500)
 
-        ChatMessage.objects.create(
-            user=user,
-            role="user",
-            content=message,
-            metadata={"mode": "gemini_chat"},
-        )
+        user = request.user
 
-        ChatMessage.objects.create(
-            user=user,
-            role="assistant",
-            content=ai_reply,
-            metadata={"mode": "gemini_chat"},
-        )
+        ChatMessage.objects.create(user=user, role="user", content=message, metadata={"mode": "gemini_chat"})
+        ChatMessage.objects.create(user=user, role="assistant", content=ai_reply, metadata={"mode": "gemini_chat"})
 
-        return Response({"assistant": ai_reply}, status=200)
+        return Response({"assistant": ai_reply})
 
     # ---------------------------------------------------------
-    # GEMINI Symptom analysis
+    # GEMINI Symptom Analysis
     # ---------------------------------------------------------
     @action(detail=False, methods=["post"])
     def ai_symptoms(self, request):
-        user = request.user
         text = (request.data.get("text") or "").strip()
-
         if not text:
             return Response({"error": "Symptoms text required"}, status=400)
 
@@ -383,10 +344,10 @@ class ChatViewSet(viewsets.ViewSet):
             return Response({"error": f"Gemini Error: {str(e)}"}, status=500)
 
         ChatMessage.objects.create(
-            user=user,
+            user=request.user,
             role="assistant",
             content=analysis,
             metadata={"mode": "gemini_symptom_analysis"},
         )
 
-        return Response({"analysis": analysis}, status=200)
+        return Response({"analysis": analysis})
